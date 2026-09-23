@@ -1,0 +1,20 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
+  host: <%= ENV["DATABASE_HOST"] %>
+  port: <%= ENV["DATABASE_PORT"] %>
+  username: <%= ENV["DATABASE_USER"] %>
+  password: <%= ENV["DATABASE_PASSWORD"] %>
+
+development:
+  <<: *default
+  database: <%= ENV.fetch("DATABASE_NAME", "sms_development") %>
+
+test:
+  <<: *default
+  database: <%= ENV.fetch("TEST_DATABASE_NAME", "sms_test") %>
+
+production:
+  <<: *default
+  database: sms_production

@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:?missing in .env}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?missing in .env}
+      POSTGRES_DB: ${DATABASE_NAME:-sms_development}
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DATABASE_USER}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
