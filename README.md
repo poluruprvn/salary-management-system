@@ -36,7 +36,7 @@ bin/dev                 # API on http://localhost:3000
 cd web && npm run dev   # SPA on http://localhost:5173
 ```
 
-`GET /up` is the health endpoint. It returns 200 once the app boots cleanly. No root route is defined. Nothing else is built yet: no models, no migrations, no resource endpoints.
+`GET /healthz` checks the process and Postgres, returning 503 when the database is unreachable. `GET /readyz` adds a pending-migration check. No root route is defined. Nothing else is built yet: no models, no migrations, no resource endpoints.
 
 ## Tests
 
@@ -77,7 +77,7 @@ Encrypted credentials live in `config/credentials.yml.enc`. They need `config/ma
 ## Conventions
 
 - API-only: no sessions, no cookies, no view layer. Authentication is not wired up yet.
-- CORS exposes the `Link` and `X-Total-Count` headers. Paginate with those, not a JSON envelope.
+- Collections return a `{ data, pagination }` envelope. CORS also exposes the `Link` and `X-Total-Count` headers, set alongside it.
 - Active Job, Active Storage, Action Mailer, Action Mailbox, Action Text, and Action Cable are disabled in `config/application.rb`. Re-enable a framework there before using it.
 - Ruby style is `rubocop-rails-omakase` with no overrides. It puts spaces inside brackets: `[ :get, :post ]`.
 

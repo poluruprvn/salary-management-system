@@ -59,7 +59,11 @@ Employees match on employee number, salaries on employee number and effective da
 
 **Sign in and audit.** Email and password, one seeded HR account: 10,000 salaries cannot sit behind a public URL. Every write records who changed what, and when.
 
-The API is token based, because it is API only and has no sessions or cookies. Sign in returns an opaque bearer token held server side, with an expiry, that sign out deletes. Not JWT: statelessness buys nothing for one user, and it cannot revoke. Audit rows are written in the same transaction as the write they record, so there is no window where a change exists and its trail does not.
+The API is token based, because it is API only and has no sessions or cookies. Sign in returns two things: a short lived JWT access token, and a long lived refresh token held server side. The access token is stateless and is never looked up, so authentication costs a signature verify and no query. The refresh token is a row, and sign out deletes it.
+
+That split is what makes sign out mean something. A JWT cannot be withdrawn once issued, so ending a session works by refusing to mint the next one. The cost is a window: after sign out the old access token still verifies until it expires. Keep the access lifetime short enough that the window does not matter, and accept it rather than pay for a blacklist on every request.
+
+Audit rows are written in the same transaction as the write they record, so there is no window where a change exists and its trail does not.
 
 **Seed data.** 10,000 employees across countries and departments, with plausible salary histories and bonuses.
 
@@ -72,6 +76,9 @@ The API is token based, because it is API only and has no sessions or cookies. S
 | Benefits, equity, stock grants | Each needs its own vesting and valuation model. Salary and cash bonuses answer the questions asked. |
 | Approval workflows, sign off | One persona, and they are the approver. State machines that add no information. |
 | Roles, permissions, SSO, MFA, password reset | One persona who may see everything, so nothing to authorize against. Sign in itself is in scope. |
+| Cursor or keyset pagination | Lists page by offset over `Link` and count headers. Offset degrades only at depth, and 10,000 rows is a few hundred pages. A cursor costs an opaque token per sort key, and it takes away jumping to a page, which is the one thing a manager scanning a list actually does. |
+| A search engine: Elasticsearch, OpenSearch, Meilisearch | Search is `ILIKE` in Postgres, which stays inside the latency budget at 10,000 employees. A second datastore buys relevance ranking and fuzzy matching, and costs a sync path, a reindex path, and a class of staleness bug. Nothing in the questions above needs it. |
+| Access token blacklists, denylists, refresh reuse detection | A blacklist is a database read on every request, which undoes the reason to carry a JWT at all. Sign out deletes the refresh token, so a session ends within one access token lifetime. Shorten that lifetime if the window ever matters. |
 | Multi currency and FX | Every amount is in one base currency. Conversion needs a dated rate table, a rule for which rate a given query uses, and rounding on every aggregate. The questions asked are comparisons, and comparisons work in one currency. The cost is that the register hands the provider a base currency amount, not a local one. |
 | Department change history | Only the current department is kept, so past cost attributes to today's department. The cost question is about run rate now. |
 | Pay bands and compa ratio | Bands are a structure the org has not defined. Percentiles from actual pay answer it with data that exists. |
@@ -83,4 +90,4 @@ The API is token based, because it is API only and has no sessions or cookies. S
 - Any of 10,000 employees is findable in seconds.
 - A raise is one form, and the previous value stays visible after it.
 - "Which department costs the most" and "what is the median for L4 engineers in India" are answerable in the UI, with no export.
-- Lists and dashboards stay fast at 10,000 employees with full salary history behind them: list, search, and filter under 300 ms at p95, dashboard answers under 1 second, measured server side against seeded data.
+- Lists and dashboards stay fast at 10,000 employees with full salary history behind them: list, search, and filter under 300 ms at p95, measured server side against seeded data.

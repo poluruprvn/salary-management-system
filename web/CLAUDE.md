@@ -2,7 +2,7 @@
 
 Frontend SPA. Root `CLAUDE.md` covers the backend.
 
-There is no API contract yet. `/up` is the only route. One convention is settled: collections paginate through the `Link` and `X-Total-Count` response headers, not a JSON envelope.
+There is no API contract yet. `/healthz` and `/readyz` are the only routes. One convention is settled: collections return a `{ data, pagination }` envelope, with `Link` and `X-Total-Count` also set as response headers.
 
 ## State of this directory
 

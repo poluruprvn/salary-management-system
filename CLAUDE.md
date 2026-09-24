@@ -28,6 +28,12 @@ Gems install to `vendor/bundle`, set by the committed `.bundle/config`. Use `bun
 
 `.rspec` requires only `spec_helper`. Every spec file must `require 'rails_helper'` itself, or Rails will not load. The test database is a separate database (`TEST_DATABASE_NAME`), not a schema. `factory_bot_rails` is available. There is no `spec/factories/` yet, and no specs have been written.
 
+## Docs
+
+`docs/requirements.md` is the spec. Treat it as settled: it argues for its choices, and the reasoning is part of the requirement.
+
+Implementation plans live in `docs/plans/`, numbered in dependency order: `01-core-slice.md`, then `02-`, and so on. One plan per slice of work. Write the plan there, not only to a scratch location, and name the file after the slice.
+
 ## Style
 
 Ruby follows rubocop-rails-omakase with no overrides. It puts spaces inside brackets: `[ :get, :post ]`, `{ foo: 1 }`.
@@ -44,5 +50,5 @@ Keep commit messages short. A one-line description of what changed is enough.
 
 - `config/application.rb` disables active_job, active_storage, action_mailer, action_mailbox, action_text, and action_cable. No background jobs, uploads, or mail until one is re-enabled there.
 - API-only: no sessions, no cookies. Authentication is not wired up at all. There is no gem, no `current_user`, no authorization layer. Do not write code that assumes one.
-- `config/initializers/cors.rb` allows `CORS_ORIGINS`, default `http://localhost:5173`. It exposes `Link` and `X-Total-Count`. Paginate with those headers, not a JSON envelope.
+- `config/initializers/cors.rb` allows `CORS_ORIGINS`, default `http://localhost:5173`. It exposes `Link` and `X-Total-Count`. Collections return a `{ data, pagination }` envelope; those two headers are set alongside it as a convenience, not as the contract.
 - No migrations or `db/schema.rb` exist yet. `db:prepare` creates an empty database.
