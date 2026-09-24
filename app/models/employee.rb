@@ -39,6 +39,36 @@
 class Employee < ApplicationRecord
   STATUSES = %w[pending active exited].freeze
 
+  # lower() because postgres:18-alpine is musl, which collates bytewise and puts every capital
+  # first. level sorts by rank, since as text L10 sorts before L2. exit_date and salary can be
+  # null, and Postgres puts nulls first on DESC.
+  SORT_KEYS = {
+    "name" => { expression: Arel.sql("lower(employees.name)") },
+    "hire_date" => { expression: Arel.sql("employees.hire_date") },
+    "exit_date" => { expression: Arel.sql("employees.exit_date"), nulls_last: true },
+    "salary" => { expression: Arel.sql("current_salary.amount_cents"), nulls_last: true },
+    "department" => { expression: Arel.sql("lower(departments.name)"), joins: :department },
+    "country" => { expression: Arel.sql("lower(countries.name)"), joins: :country },
+    "level" => { expression: Arel.sql("levels.rank"), joins: :level }
+  }.freeze
+
+  # No sr.id tiebreak. The partial unique index allows at most one live row per date, but the
+  # planner cannot prove it and would add an Incremental Sort per employee on top of the
+  # backward index scan.
+  SALARY_AS_OF_JOIN = <<~SQL.squish
+    LEFT JOIN LATERAL (
+      SELECT sr.amount_cents, sr.effective_date
+      FROM salary_revisions sr
+      WHERE sr.employee_id = employees.id
+        AND sr.effective_date <= :as_of
+        AND sr.voided_at IS NULL
+        AND employees.hire_date <= :as_of
+        AND (employees.exit_date IS NULL OR employees.exit_date >= :as_of)
+      ORDER BY sr.effective_date DESC
+      LIMIT 1
+    ) current_salary ON TRUE
+  SQL
+
   audited
   has_associated_audits
 
@@ -64,6 +94,59 @@ class Employee < ApplicationRecord
   scope :active_as_of, ->(date) { where("hire_date <= :date AND (exit_date IS NULL OR exit_date >= :date)", date: date) }
   scope :pending_as_of, ->(date) { where("hire_date > :date", date: date) }
   scope :exited_as_of, ->(date) { where("exit_date < :date", date: date) }
+
+  # Filters only. No join and no order, so the page count never pays for the salary lookup.
+  def self.filtered(filters, as_of:)
+    relation = all
+    relation = relation.search(filters[:q]) if filters[:q].present?
+    relation = relation.where(title: filters[:title]) if filters[:title].present?
+    relation = relation.with_status(filters[:status].to_s, as_of: as_of) if filters[:status].present?
+
+    %i[department_id country_id level_id].each do |key|
+      ids = Array(filters[key]).compact_blank
+      relation = relation.where(key => ids) if ids.any?
+    end
+
+    relation
+  end
+
+  # ILIKE has no operator for uuid, so an id is an exact match instead. Nobody types part of one.
+  def self.search(term)
+    term = term.to_s.squish
+
+    if (id = type_for_attribute(:id).cast(term))
+      where(id: id)
+    else
+      where("employees.name ILIKE :pattern OR employees.email ILIKE :pattern OR employees.title ILIKE :pattern",
+            pattern: "%#{sanitize_sql_like(term)}%")
+    end
+  end
+
+  def self.with_status(status, as_of:)
+    raise InvalidParameter.new(:status, "must be one of #{STATUSES.join(", ")}") unless STATUSES.include?(status)
+
+    public_send("#{status}_as_of", as_of)
+  end
+
+  def self.with_salary_as_of(date)
+    joins(sanitize_sql_array([ SALARY_AS_OF_JOIN, { as_of: date } ]))
+      .select(arel_table[Arel.star],
+              "current_salary.amount_cents AS current_salary_amount_cents",
+              "current_salary.effective_date AS current_salary_effective_date")
+  end
+
+  # Sorting by salary reads the lateral, so it needs with_salary_as_of on the same relation.
+  def self.sorted_by(sort)
+    sort = sort.to_s.presence || "name"
+    key = SORT_KEYS.fetch(sort.delete_prefix("-")) { raise UnknownSortKey, sort }
+    order = sort.start_with?("-") ? key[:expression].desc : key[:expression].asc
+    order = order.nulls_last if key[:nulls_last]
+
+    relation = key[:joins] ? joins(key[:joins]) : all
+    # Every key has ties, so the id tiebreak fixes their order and offset pages never repeat or
+    # skip a row.
+    relation.order(order, :id)
+  end
 
   def status_as_of(date = Date.current)
     return "pending" if hire_date > date

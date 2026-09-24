@@ -52,6 +52,6 @@ Keep commit messages short. A one-line description of what changed is enough.
 ## Gotchas
 
 - `config/application.rb` disables active_job, active_storage, action_mailer, action_mailbox, action_text, and action_cable. No background jobs, uploads, or mail until one is re-enabled there.
-- API-only: no sessions, no cookies. Authentication is not wired up at all. There is no gem, no `current_user`, no authorization layer. Do not write code that assumes one.
+- API-only: no sessions, no cookies. `Api::V1::BaseController` requires a JWT bearer token on every action and sets `current_user`, which `audited` records as the actor. There is no authorization layer.
 - `config/initializers/cors.rb` allows `CORS_ORIGINS`, default `http://localhost:5173`. It exposes `Link` and `X-Total-Count`. Collections return a `{ data, pagination }` envelope; those two headers are set alongside it as a convenience, not as the contract.
 - `db:migrate` loads `db/schema.rb` and stamps every version when the database is empty, so it will not re-run an edited migration. To rebuild from the migrations themselves, drop and create the database, delete `db/schema.rb`, then migrate.

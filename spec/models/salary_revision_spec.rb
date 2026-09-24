@@ -157,6 +157,19 @@ RSpec.describe SalaryRevision do
     end
   end
 
+  describe "a voided revision" do
+    let(:revision) { create(:salary_revision, :voided, employee: employee, effective_date: Date.new(2024, 4, 1)) }
+
+    it "cannot be edited, since no read would show the change" do
+      expect(revision.update(amount_cents: 13_000_000)).to be(false)
+      expect(revision.errors[:base]).to include("A voided revision cannot be edited")
+    end
+
+    it "can still be put back into the live set" do
+      expect(revision.update(voided_at: nil)).to be(true)
+    end
+  end
+
   describe ".live" do
     it "excludes voided revisions" do
       live = create(:salary_revision, employee: employee, effective_date: Date.new(2024, 4, 1))
@@ -165,6 +178,48 @@ RSpec.describe SalaryRevision do
       expect(described_class.live).to contain_exactly(live)
     end
   end
+
+  describe ".history_for" do
+    def history = described_class.history_for(employee).map { |r| [ r.effective_date, r.amount_cents, r.previous_amount_cents ] }
+
+    it "lists one employee's live revisions newest first, each with the amount before it" do
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 1, 1), amount_cents: 10_000_000)
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 6, 1), amount_cents: 11_000_000)
+      create(:salary_revision, employee: create(:employee, hire_date: Date.new(2024, 1, 1)), effective_date: Date.new(2024, 3, 1))
+
+      expect(history).to eq([
+        [ Date.new(2024, 6, 1), 11_000_000, 10_000_000 ],
+        [ Date.new(2024, 1, 1), 10_000_000, nil ]
+      ])
+    end
+
+    it "never takes a voided revision as the previous amount" do
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 1, 1), amount_cents: 10_000_000)
+      create(:salary_revision, :voided, employee: employee, effective_date: Date.new(2024, 3, 1), amount_cents: 99_000_000)
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 6, 1), amount_cents: 11_000_000)
+
+      expect(history).to eq([
+        [ Date.new(2024, 6, 1), 11_000_000, 10_000_000 ],
+        [ Date.new(2024, 1, 1), 10_000_000, nil ]
+      ])
+    end
+
+    it "gives the revision after a backdated one a new previous amount" do
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 1, 1), amount_cents: 10_000_000)
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 9, 1), amount_cents: 12_000_000)
+
+      expect(history.first).to eq([ Date.new(2024, 9, 1), 12_000_000, 10_000_000 ])
+
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 6, 1), amount_cents: 11_000_000)
+
+      expect(history).to eq([
+        [ Date.new(2024, 9, 1), 12_000_000, 11_000_000 ],
+        [ Date.new(2024, 6, 1), 11_000_000, 10_000_000 ],
+        [ Date.new(2024, 1, 1), 10_000_000, nil ]
+      ])
+    end
+  end
+
   describe "auditing" do
     it "files its trail under the employee" do
       revision = create(:salary_revision, employee: employee, effective_date: Date.new(2024, 4, 1))

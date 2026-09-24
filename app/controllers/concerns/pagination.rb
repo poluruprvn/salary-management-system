@@ -12,7 +12,8 @@ module Pagination
     def paginate(relation, total: nil)
       per_page = [ positive_integer_param(:per_page, DEFAULT_PER_PAGE), MAX_PER_PAGE ].min
       page = positive_integer_param(:page, 1)
-      total = (total || relation.count).to_i
+      # A bare count puts a custom select list inside COUNT(), which is invalid SQL. :all counts rows.
+      total = (total || relation.count(:all)).to_i
       total_pages = (total / per_page.to_f).ceil
 
       metadata = {

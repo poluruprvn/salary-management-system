@@ -145,7 +145,7 @@ The envelope is canonical. `prev_page` and `next_page` are null at the ends, so 
 - **The body carries it because not every consumer is a browser.** Headers are awkward for anything that speaks JSON: an MCP tool returns a JSON result, so header-based paging means every wrapper re-plumbs `X-Total-Count` into the payload by hand. Scripts and `curl` have the same problem. One shape in the body works everywhere.
 - `Link` and `X-Total-Count` are still set, because `config/initializers/cors.rb` already exposes exactly those two and they are standard HTTP. They are a convenience, not the contract, so no new header is invented and the CORS config does not change. A custom header that CORS does not expose is invisible to `fetch` with no error at all, which is a failure mode worth not buying.
 - `page` and `per_page` come from params, default to 1 and 25, and cap at 100. Above the cap clamps, because a limit is not an error. Zero, negative or unparseable is a 422. `per_page` in the envelope reports what was used, so a client that asked for 1000 can see it got 100.
-- `total:` is for callers with a cheaper count than `relation.count`, which employees has: `#count_relation` drops the lateral. It defaults to `relation.count`, so a plain resource calls `paginate(Country.all)` and is done.
+- `total:` is for callers with a cheaper count than `relation.count(:all)`, which employees has: the filtered relation skips the lateral. It defaults to `relation.count(:all)`, so a plain resource calls `paginate(Country.all)` and is done. `:all` counts rows. A bare `count` puts a custom select list inside `COUNT()`, which is invalid SQL.
 - `Link` is built by rewriting the `page` param on `request.url`, so every filter, `sort` and `as_of` survives into the links and no resource knowledge leaks into the concern.
 - A page past the end is an empty `data` with correct metadata, not a 404.
 - `paginate` is the only place `limit` and `offset` are applied. Phase 5's scopes hand it an unsliced relation and never page themselves.
@@ -175,14 +175,14 @@ There is no `app/queries/`. Reads are scopes on the Phase 2 models, writes are s
 
 Three scopes on `Employee`, added to the file Phase 2 created.
 
-`filtered(filters)` handles `q`, `department_id[]`, `country_id[]`, `level_id[]`, `title` and `status`. `status` is checked against `Employee::STATUSES`, which is also what `GET /meta` publishes: an unchecked filter naming a status `status_as_of` cannot return is an empty page and no error. Filters only: no lateral, no order. `q` matches `name`, `email` and `title` with `ILIKE`. A `q` that parses as a UUID is an equality match on `id` instead, per Phase 1.
+`filtered(filters, as_of:)` handles `q`, `department_id[]`, `country_id[]`, `level_id[]`, `title` and `status`. `status` is checked against `Employee::STATUSES`, which is also what `GET /meta` publishes: an unchecked filter naming a status `status_as_of` cannot return is an empty page and no error. Filters only: no lateral, no order. `q` matches `name`, `email` and `title` with `ILIKE`. A `q` that parses as a UUID is an equality match on `id` instead, per Phase 1.
 
 `with_salary_as_of(date)` adds the lateral. `sorted_by(key)` adds the order and whatever join the key needs.
 
 The controller composes them:
 
 ```ruby
-base = Employee.filtered(filter_params)
+base = Employee.filtered(filter_params, as_of: as_of)
 paginate(base.with_salary_as_of(as_of).sorted_by(sort_param), total: base.count)
 ```
 
@@ -194,7 +194,7 @@ The analytics phase adds a salary *filter*. It belongs in `filtered`, and the co
 
 ```sql
 LEFT JOIN LATERAL (
-  SELECT amount_cents, effective_date, reason
+  SELECT amount_cents, effective_date
   FROM salary_revisions sr
   WHERE sr.employee_id = employees.id
     AND sr.effective_date <= :as_of
@@ -210,7 +210,7 @@ LEFT JOIN LATERAL (
 
 **Do not add `, sr.id DESC` as a tiebreak.** The partial unique index already guarantees at most one live row per date, so the tiebreak is logically dead, but the planner cannot prove it: it fails pathkey containment and inserts an Incremental Sort started once per outer row. Without it the plan is a plain backward index scan. Sorting 10,000 employees by salary is the query that exposes this.
 
-Build the fragment with `sanitize_sql_array` and bind `as_of`. `bin/ci` runs `brakeman --exit-on-warn`, so one injection warning fails the build. If Brakeman still flags the sanitized heredoc, record it in `config/brakeman.ignore` rather than weakening the query.
+Build the fragment with `sanitize_sql_array` and bind `as_of`. `bin/ci` runs `brakeman --exit-on-warn`, so one injection warning fails the build. Brakeman accepts the sanitized heredoc but flags an interpolated `Arel.sql`, so each sort expression is an `Arel.sql` literal in the frozen hash, turned into an order with `asc`, `desc` and `nulls_last`.
 
 Sorting is in the spec: server side search, filter, sort and pagination, because 10,000 rows do not belong in browser memory. The keys are `name`, `hire_date`, `exit_date`, `salary`, `department`, `country` and `level`, with `-` for descending. They live in a frozen hash, and `sorted_by` raises `UnknownSortKey` on anything else. Phase 4 rescues it as a 422. An unknown key is never a silent fallback to the default sort.
 
