@@ -127,7 +127,7 @@ Define the error shape before the first controller, or 200 spec assertions get r
 { "error": { "code": "validation_failed", "message": "...", "details": [ { "field": "email", "message": "is invalid" } ] } }
 ```
 
-`rescue_from` covers `RecordNotFound` (404), `RecordInvalid` (422), `ParameterMissing` (400), `RecordNotUnique` (422), `Employee::UnknownSortKey` (422) from Phase 5, and `Auth::InvalidCredentials` (401). `RecordNotUnique` is not padding: a second raise on an occupied date or a duplicate email is an ordinary action where the Phase 2 validation loses the race to the index, and without the handler the loser is a 500. It maps to 422 rather than 409 so the client has one path, with empty `details` because the adapter error names a constraint, not a field.
+`rescue_from` covers `RecordNotFound` (404), `RecordInvalid` (422), `ParameterMissing` (400), `ParseError` (400), `RecordNotUnique` (422), `InvalidParameter` (422), `Auth::InvalidCredentials` (401) and `Auth::InvalidRefreshToken` (401). A failed refresh gets its own code because the request carries no email and no password, so `invalid_credentials` would name fields the client never sent. `ParseError` is there because a body that is not JSON would otherwise answer in Rails' own shape, and a client switching on `error.code` would read nil. `RecordNotUnique` is not padding: a second raise on an occupied date or a duplicate email is an ordinary action where the Phase 2 validation loses the race to the index, and without the handler the loser is a 500. It maps to 422 rather than 409 so the client has one path, with empty `details` because the adapter error names a constraint, not a field.
 
 A malformed UUID needs no handler. Rails casts an unparseable value for a `uuid` column to `nil`, so `Employee.find("nonsense")` queries `id = NULL`, matches nothing and raises `RecordNotFound`, which is already a 404. The same cast turns `department_id[]=nonsense` into an empty page rather than an error. Phase 8 asserts both instead of coding around them.
 
@@ -140,7 +140,7 @@ A malformed UUID needs no handler. Rails casts an unparseable value for a `uuid`
 }
 ```
 
-The envelope is canonical. `prev_page` and `next_page` are null at the ends, so a consumer never computes a page number that does not exist.
+The envelope is canonical. `prev_page` and `next_page` are null at the ends, so a consumer never computes a page number that does not exist. Past the end `prev_page` clamps to the last real page instead of going null, so an over-large `page` still links back to data.
 
 - **The body carries it because not every consumer is a browser.** Headers are awkward for anything that speaks JSON: an MCP tool returns a JSON result, so header-based paging means every wrapper re-plumbs `X-Total-Count` into the payload by hand. Scripts and `curl` have the same problem. One shape in the body works everywhere.
 - `Link` and `X-Total-Count` are still set, because `config/initializers/cors.rb` already exposes exactly those two and they are standard HTTP. They are a convenience, not the contract, so no new header is invented and the CORS config does not change. A custom header that CORS does not expose is invisible to `fetch` with no error at all, which is a failure mode worth not buying.
@@ -212,7 +212,7 @@ LEFT JOIN LATERAL (
 
 Build the fragment with `sanitize_sql_array` and bind `as_of`. `bin/ci` runs `brakeman --exit-on-warn`, so one injection warning fails the build. If Brakeman still flags the sanitized heredoc, record it in `config/brakeman.ignore` rather than weakening the query.
 
-Sorting is in the spec: server side search, filter, sort and pagination, because 10,000 rows do not belong in browser memory. The keys are `name`, `hire_date`, `exit_date`, `salary`, `department`, `country` and `level`, with `-` for descending. They live in a frozen hash, and `sorted_by` raises `Employee::UnknownSortKey` on anything else. Phase 4 rescues it as a 422. An unknown key is never a silent fallback to the default sort.
+Sorting is in the spec: server side search, filter, sort and pagination, because 10,000 rows do not belong in browser memory. The keys are `name`, `hire_date`, `exit_date`, `salary`, `department`, `country` and `level`, with `-` for descending. They live in a frozen hash, and `sorted_by` raises `UnknownSortKey` on anything else. Phase 4 rescues it as a 422. An unknown key is never a silent fallback to the default sort.
 
 - `name` maps to `lower(employees.name)`.
 - `level` maps to `levels.rank`, never to `code` or `name`. As text `L10` sorts before `L2`, and `rank` is not null in Phase 1 exactly so this sort has something to mean.

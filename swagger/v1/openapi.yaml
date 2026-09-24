@@ -1,0 +1,151 @@
+---
+openapi: 3.0.1
+info:
+  title: Salary Management API
+  version: v1
+servers:
+- url: http://localhost:3000
+paths:
+  "/api/v1/auth/sign_in":
+    post:
+      summary: Exchange credentials for a token pair
+      tags:
+      - Auth
+      security: []
+      parameters: []
+      responses:
+        '200':
+          description: signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/token_pair"
+        '400':
+          description: a credential is missing
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the email or the password is wrong
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+        required: true
+  "/api/v1/auth/refresh":
+    post:
+      summary: Rotate a refresh token for a new pair
+      tags:
+      - Auth
+      security: []
+      parameters: []
+      responses:
+        '200':
+          description: rotated, and the old refresh token is now dead
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/token_pair"
+        '400':
+          description: no refresh token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the refresh token is expired or has already been used
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+        required: true
+  "/api/v1/auth/sign_out":
+    delete:
+      summary: Delete every refresh token for the signed in user
+      tags:
+      - Auth
+      responses:
+        '204':
+          description: signed out
+        '401':
+          description: the access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+components:
+  securitySchemes:
+    bearer_auth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    token_pair:
+      type: object
+      required:
+      - access_token
+      - expires_in
+      - refresh_token
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Seconds the access token stays valid
+        refresh_token:
+          type: string
+    error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - details
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                required:
+                - field
+                - message
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+security:
+- bearer_auth: []

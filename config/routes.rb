@@ -5,7 +5,15 @@ Rails.application.routes.draw do
     mount Rswag::Api::Engine => "/api-docs"
   end
 
-  # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
+  namespace :api, defaults: { format: :json } do
+    namespace :v1 do
+      scope :auth, as: :auth do
+        post "sign_in", to: "sessions#create"
+        post "refresh", to: "sessions#refresh"
+        delete "sign_out", to: "sessions#destroy"
+      end
+    end
+  end
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
   # Can be used by load balancers and uptime monitors to verify that the app is live.
