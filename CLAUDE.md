@@ -27,7 +27,7 @@ Gems install to `vendor/bundle`, set by the committed `.bundle/config`. Use `bun
 
 ## Testing
 
-`.rspec` requires only `spec_helper`. Every spec file must `require 'rails_helper'` itself, or Rails will not load. The test database is a separate database (`TEST_DATABASE_NAME`), not a schema. `factory_bot_rails` is available. There is no `spec/factories/` yet, and no specs have been written.
+`.rspec` requires only `spec_helper`. Every spec file must `require 'rails_helper'` itself, or Rails will not load. The test database is a separate database (`TEST_DATABASE_NAME`), not a schema. `factory_bot_rails` is available. `spec/factories/` and `spec/models/` have one file per model.
 
 ## Docs
 

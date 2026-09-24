@@ -39,6 +39,9 @@
 class Employee < ApplicationRecord
   STATUSES = %w[pending active exited].freeze
 
+  audited
+  has_associated_audits
+
   belongs_to :country
   belongs_to :department
   belongs_to :level
@@ -55,6 +58,7 @@ class Employee < ApplicationRecord
   validates :title, presence: true
   validates :hire_date, presence: true
   validate :exit_date_not_before_hire_date
+  validate :hire_date_not_after_live_revisions, if: -> { persisted? && hire_date_changed? }
 
   # The exit date is inclusive: the register pays that day.
   scope :active_as_of, ->(date) { where("hire_date <= :date AND (exit_date IS NULL OR exit_date >= :date)", date: date) }
@@ -81,5 +85,15 @@ class Employee < ApplicationRecord
       return if exit_date.blank? || hire_date.blank?
 
       errors.add(:exit_date, "must be on or after the hire date") if exit_date < hire_date
+    end
+
+    # A revision before the hire date still answers salary_as_of, so it would pay for a day the
+    # employee was not employed. Shortening the exit date stays permissive: a revision stranded
+    # that way is already invisible to every read, and voiding it is the retraction path.
+    def hire_date_not_after_live_revisions
+      return if hire_date.blank?
+      return unless salary_revisions.live.exists?(effective_date: ...hire_date)
+
+      errors.add(:hire_date, "must be on or before the earliest revision on file")
     end
 end

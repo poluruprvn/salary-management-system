@@ -29,6 +29,8 @@
 class SalaryRevision < ApplicationRecord
   REASONS = %w[merit promotion market_adjustment correction].freeze
 
+  audited associated_with: :employee
+
   belongs_to :employee
 
   scope :live, -> { where(voided_at: nil) }
@@ -37,11 +39,16 @@ class SalaryRevision < ApplicationRecord
   validates :reason, inclusion: { in: REASONS }
   validates :effective_date, presence: true
   validates :effective_date, uniqueness: { scope: :employee_id, conditions: -> { live } }, unless: :voided_at?
-  validate :effective_date_within_employment, if: -> { effective_date_changed? || employee_id_changed? }
+  validate :effective_date_within_employment, if: -> { effective_date_changed? || employee_id_changed? || unvoiding? }
 
   private
-    # Only on a move, never on every save. Shortening employment strands revisions outside the
-    # window, and a stranded revision still has to be voidable.
+    def unvoiding?
+      voided_at_changed? && voided_at.nil?
+    end
+
+    # Only on a move or an un-void, never on every save. Shortening employment strands revisions
+    # outside the window, and a stranded revision still has to be voidable. Putting one back into
+    # the live set is a different act, so that one is checked.
     def effective_date_within_employment
       return if effective_date.blank? || employee.blank?
 

@@ -2,6 +2,9 @@ source "https://rubygems.org"
 
 gem "rails", "~> 8.1.3", ">= 8.1.3.1"
 gem "pg", "~> 1.1"
+# json 3 dropped the positional options hash from JSON.parse, which is how
+# ActiveSupport::JSON.decode still calls it. Every jsonb read raises ArgumentError.
+gem "json", "~> 2.21"
 gem "puma", ">= 5.0"
 gem "rack-cors"
 

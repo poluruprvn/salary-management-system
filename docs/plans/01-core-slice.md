@@ -89,8 +89,9 @@ Load bearing details:
 - `RefreshToken`: `.issue!(user)` returns the raw `SecureRandom.urlsafe_base64(32)` once and stores only `Digest::SHA256.hexdigest`. `scope :active`. `.claim!(raw)` locks the live row, deletes it and issues a replacement, so every refresh rotates. The lock is what makes that exclusive: without it two concurrent claims on one token both succeed and the user ends up with two live rows. Expired rows are swept during refresh; there are no background jobs.
 - `Employee`: `status_as_of(date)`, scopes `active_as_of` / `pending_as_of` / `exited_as_of`, `salary_as_of(date)` for the single-record path. Validates uniqueness and `URI::MailTo::EMAIL_REGEXP` format of `email`, and presence of every not-null column. The format stays in the model, not a check constraint: the same argument as `reason`, a constraint makes a bad address a 500. `normalizes` strips and downcases `email` and squishes `title`: the `lower(email)` index does not see a stray space, so without it an imported row with one becomes a second employee rather than a match.
 - `salary_as_of` returns nothing unless the employee is active that day. Salary in force is a property of an employed day, and the Phase 5 lateral carries the same window.
-- `SalaryRevision`: `scope :live`, validates `effective_date` within the hire and exit dates, `reason` inclusion, `amount_cents > 0`, and uniqueness of `effective_date` scoped to `employee_id` across live rows. Moving an employee's `exit_date` earlier does not revalidate revisions already on file, so one can end up dated after the exit. The alternative is a cascade nobody asked for.
-- The window check runs only when `effective_date` or `employee_id` moves, never on every save. On every save it freezes the stranded row instead: voiding is the only retraction path, so a revision that cannot be saved is a raise that cannot be withdrawn.
+- `SalaryRevision`: `scope :live`, validates `effective_date` within the hire and exit dates, `reason` inclusion, `amount_cents > 0`, and uniqueness of `effective_date` scoped to `employee_id` across live rows. Moving an employee's `exit_date` earlier does not revalidate revisions already on file, so one can end up dated after the exit. The alternative is a cascade nobody asked for. The hire date is not symmetric and is guarded on `Employee` instead, below.
+- The window check runs only when `effective_date` or `employee_id` moves, or when a row is un-voided, never on every save. On every save it freezes the stranded row instead: voiding is the only retraction path, so a revision that cannot be saved is a raise that cannot be withdrawn. Un-voiding is checked because it puts a rule-breaking row back into the live set, which is a different act from retracting one.
+- `Employee` refuses to move `hire_date` past a revision that is still live. The two directions are not symmetric. A revision stranded after a shortened exit is invisible to every read, because `salary_as_of` returns nothing once the employee has exited. A revision stranded before a later hire date is still returned, so it would pay for a day the employee was not employed.
 
 No model mints its own `id`. The column default is the only place a UUID comes from, and `id` is never in a permitted params list.
 
@@ -198,10 +199,14 @@ LEFT JOIN LATERAL (
   WHERE sr.employee_id = employees.id
     AND sr.effective_date <= :as_of
     AND sr.voided_at IS NULL
+    AND employees.hire_date <= :as_of
+    AND (employees.exit_date IS NULL OR employees.exit_date >= :as_of)
   ORDER BY sr.effective_date DESC
   LIMIT 1
 ) current_salary ON TRUE
 ```
+
+**The employment window is part of the join.** `salary_as_of` returns nothing unless the employee is active that day, and the list path has to answer the same. Without the last two lines an exited employee keeps their last salary in the list and loses it on the detail page, and `sort=-salary` ranks them among the paid. A lateral can reference the outer row, so this costs nothing.
 
 **Do not add `, sr.id DESC` as a tiebreak.** The partial unique index already guarantees at most one live row per date, so the tiebreak is logically dead, but the planner cannot prove it: it fails pathkey containment and inserts an Incremental Sort started once per outer row. Without it the plan is a plain backward index scan. Sorting 10,000 employees by salary is the query that exposes this.
 

@@ -112,6 +112,13 @@ RSpec.describe SalaryRevision do
     it "can still be annotated" do
       expect { revision.reload.update!(note: "retracted on exit") }.not_to raise_error
     end
+
+    it "cannot be put back into the live set once voided" do
+      revision.reload.update!(voided_at: Time.current)
+
+      expect(revision.update(voided_at: nil)).to be(false)
+      expect(revision.errors[:effective_date]).to include("must be on or before the exit date")
+    end
   end
 
   describe "one live revision per employee per date" do
@@ -156,6 +163,22 @@ RSpec.describe SalaryRevision do
       create(:salary_revision, :voided, employee: employee, effective_date: Date.new(2024, 5, 1))
 
       expect(described_class.live).to contain_exactly(live)
+    end
+  end
+  describe "auditing" do
+    it "files its trail under the employee" do
+      revision = create(:salary_revision, employee: employee, effective_date: Date.new(2024, 4, 1))
+      revision.update!(amount_cents: 13_000_000)
+
+      expect(employee.associated_audits.map(&:auditable)).to all(eq(revision))
+      expect(employee.associated_audits.map(&:action)).to contain_exactly("create", "update")
+    end
+
+    it "records a void as an ordinary update" do
+      revision = create(:salary_revision, employee: employee, effective_date: Date.new(2024, 4, 1))
+      revision.update!(voided_at: Time.current)
+
+      expect(revision.audits.last.audited_changes.keys).to contain_exactly("voided_at")
     end
   end
 end

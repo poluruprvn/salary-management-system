@@ -47,7 +47,7 @@ bundle exec rspec spec/models/thing_spec.rb:42   # single file or example
 
 `.rspec` loads only `spec_helper`. Each spec file must `require "rails_helper"` itself to pull in Rails. The suite uses its own database (`TEST_DATABASE_NAME`).
 
-`factory_bot_rails`, `faker` and `shoulda-matchers` are available for test data and matchers. No specs and no `spec/factories/` exist yet, so `rspec` reports 0 examples.
+`factory_bot_rails`, `faker` and `shoulda-matchers` are available for test data and matchers. `spec/factories/` and `spec/models/` have one file per model.
 
 ## Checks
 

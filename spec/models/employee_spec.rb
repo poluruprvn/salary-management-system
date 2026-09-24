@@ -138,6 +138,29 @@ RSpec.describe Employee do
     end
   end
 
+  describe "the hire date" do
+    let(:employee) { create(:employee, hire_date: Date.new(2024, 1, 1)) }
+
+    it "cannot move past a revision that is still live" do
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 1, 1))
+
+      expect(employee.update(hire_date: Date.new(2025, 1, 1))).to be(false)
+      expect(employee.errors[:hire_date]).to include("must be on or before the earliest revision on file")
+    end
+
+    it "may move past a voided one" do
+      create(:salary_revision, :voided, employee: employee, effective_date: Date.new(2024, 1, 1))
+
+      expect(employee.update(hire_date: Date.new(2025, 1, 1))).to be(true)
+    end
+
+    it "may still move earlier, which strands nothing" do
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 6, 1))
+
+      expect(employee.update(hire_date: Date.new(2023, 1, 1))).to be(true)
+    end
+  end
+
   describe "#status_as_of" do
     let(:employee) { build(:employee, hire_date: Date.new(2024, 3, 1), exit_date: Date.new(2024, 9, 30)) }
 
@@ -262,6 +285,64 @@ RSpec.describe Employee do
       create(:salary_revision, employee: employee, effective_date: Date.new(2024, 1, 1))
 
       expect(employee.salary_as_of(Date.new(2023, 12, 31))).to be_nil
+    end
+  end
+  describe "auditing" do
+    let(:employee) { create(:employee, title: "Engineer") }
+
+    it "records a create" do
+      audit = employee.audits.last
+
+      expect(audit.action).to eq("create")
+      expect(audit.audited_changes).to include("title" => "Engineer")
+    end
+
+    # The audited generator hardcodes auditable_id as an integer, and Rails casts a UUID through
+    # to_i rather than raising, so every row would collapse onto 1 and auditable would be nil.
+    it "round trips auditable_id as a uuid" do
+      audit = employee.audits.last
+
+      expect(audit.auditable_id).to eq(employee.id)
+      expect(audit.auditable).to eq(employee)
+    end
+
+    it "records an update as a from-to pair" do
+      employee.update!(title: "Staff Engineer")
+
+      expect(employee.audits.last.audited_changes).to include("title" => [ "Engineer", "Staff Engineer" ])
+    end
+
+    it "writes nothing for a no-op update" do
+      employee
+
+      expect { employee.update!(title: "Engineer") }.not_to change { employee.audits.count }
+    end
+
+    it "writes nothing when the change is only to an ignored timestamp" do
+      employee
+
+      expect { employee.touch }.not_to change { employee.audits.count }
+    end
+
+    # audit_destroy is registered before the restrict_with_error callback, so the trail row is
+    # inserted and then rolled back with the aborted destroy.
+    it "rolls the trail back with a failed save" do
+      create(:salary_revision, employee: employee)
+
+      expect { employee.destroy }.not_to change(Audited::Audit, :count)
+      expect(employee.reload).to be_persisted
+    end
+
+    it "leaves the actor nil when there is no controller" do
+      expect(employee.audits.last.user).to be_nil
+    end
+
+    it "names the actor when one is declared" do
+      user = create(:user)
+
+      audit = Audited::Audit.as_user(user) { create(:employee) }.audits.last
+
+      expect(audit.user).to eq(user)
     end
   end
 end
