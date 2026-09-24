@@ -47,6 +47,18 @@ RSpec.describe Employee do
   it { is_expected.to validate_presence_of(:email) }
   it { is_expected.to validate_presence_of(:title) }
   it { is_expected.to validate_presence_of(:hire_date) }
+  it { is_expected.to validate_length_of(:name).is_at_most(255) }
+  it { is_expected.to validate_length_of(:email).is_at_most(255) }
+  it { is_expected.to validate_length_of(:title).is_at_most(255) }
+
+  # Postgres reads 20240101 as a date, so without the strict type the row saved and only the
+  # next comparison in Ruby raised.
+  it "refuses a hire date that is a number, without raising on the way" do
+    employee = build(:employee, hire_date: 20240101, exit_date: Date.new(2025, 1, 1))
+
+    expect(employee).not_to be_valid
+    expect(employee.errors[:hire_date]).to include("can't be blank")
+  end
 
   it "downcases the email before validation" do
     employee = create(:employee, email: "Ada@Example.com")
@@ -135,6 +147,23 @@ RSpec.describe Employee do
       employee = build(:employee, hire_date: Date.new(2024, 1, 10), exit_date: Date.new(2024, 1, 9))
 
       expect { employee.save!(validate: false) }.to raise_error(ActiveRecord::CheckViolation)
+    end
+
+    it "refuses a value that is not a date, which would otherwise clear it" do
+      employee = create(:employee, exit_date: Date.new(2025, 6, 30))
+
+      [ "12/31/2025", 20251231, true, false ].each do |value|
+        expect(employee.update(exit_date: value)).to be(false)
+        expect(employee.errors[:exit_date]).to contain_exactly("is not a valid date")
+      end
+      expect(employee.reload.exit_date).to eq(Date.new(2025, 6, 30))
+    end
+
+    it "clears on nil or a blank string" do
+      employee = create(:employee, exit_date: Date.new(2025, 6, 30))
+
+      expect(employee.update(exit_date: "")).to be(true)
+      expect(employee.reload.exit_date).to be_nil
     end
   end
 
@@ -588,6 +617,63 @@ RSpec.describe Employee do
       expect(base.count).to eq(2)
       expect(base.with_salary_as_of(as_of).sorted_by("department")).to eq([ adam, ada ])
       expect(base.with_salary_as_of(as_of).sorted_by("-salary")).to eq([ ada, adam ])
+    end
+  end
+
+  describe ".title_counts" do
+    def counts(term) = described_class.title_counts(term).map { |row| [ row.title, row.employee_count ] }
+
+    it "counts each title across every employee, exited or not yet hired, most used first" do
+      create_list(:employee, 2, title: "Senior Engineer")
+      create(:employee, title: "Sr. Engineer", exit_date: Date.yesterday)
+      create(:employee, title: "Senior Engineer", hire_date: Date.tomorrow)
+
+      expect(counts(nil)).to eq([ [ "Senior Engineer", 3 ], [ "Sr. Engineer", 1 ] ])
+    end
+
+    it "breaks a tie on the title, ignoring case" do
+      %w[Zookeeper analyst Buyer].each { |title| create(:employee, title: title) }
+
+      expect(counts(nil).map(&:first)).to eq(%w[analyst Buyer Zookeeper])
+    end
+
+    it "matches anywhere in the title, ignoring case and extra spaces" do
+      create(:employee, title: "Senior Data Engineer")
+      create(:employee, title: "Accountant")
+
+      expect(counts("  DATA   eng ")).to eq([ [ "Senior Data Engineer", 1 ] ])
+    end
+
+    it "treats % and _ as literal characters" do
+      create(:employee, title: "Engineer")
+
+      expect(counts("%")).to be_empty
+      expect(counts("_")).to be_empty
+    end
+  end
+
+  describe "#audit_trail" do
+    let(:employee) { create(:employee, hire_date: Date.new(2024, 1, 1)) }
+
+    it "holds the employee's own changes and their revisions', newest first" do
+      revision = create(:salary_revision, employee: employee)
+      employee.update!(title: "Staff Engineer")
+      create(:salary_revision, employee: create(:employee, hire_date: Date.new(2024, 1, 1)))
+
+      expect(employee.audit_trail.map { |audit| [ audit.auditable, audit.action ] }).to eq([
+        [ employee, "update" ], [ revision, "create" ], [ employee, "create" ]
+      ])
+    end
+
+    # Frozen time gives every row the same created_at, which is the tie the id has to break.
+    it "breaks a created_at tie on id, so offset pages never overlap" do
+      freeze_time do
+        employee
+        3.times { |n| employee.update!(title: "Title #{n}") }
+
+        expect(employee.audit_trail.map(&:created_at).uniq.size).to eq(1)
+        expect(employee.audit_trail.map(&:version)).to eq([ 4, 3, 2, 1 ])
+      end
     end
   end
 

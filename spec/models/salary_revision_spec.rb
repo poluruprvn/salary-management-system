@@ -92,6 +92,13 @@ RSpec.describe SalaryRevision do
       expect(build(:salary_revision, employee: employee, effective_date: 6.months.from_now.to_date)).to be_valid
     end
 
+    it "is refused as a number, without raising in the window or uniqueness checks" do
+      revision = build(:salary_revision, employee: employee, effective_date: 20240401)
+
+      expect(revision).not_to be_valid
+      expect(revision.errors[:effective_date]).to include("can't be blank")
+    end
+
     it "is rechecked when the date moves out of the window" do
       revision = create(:salary_revision, employee: employee, effective_date: Date.new(2024, 4, 1))
 

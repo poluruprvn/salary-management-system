@@ -12,13 +12,23 @@ Rails.application.routes.draw do
         post "refresh", to: "sessions#refresh"
         delete "sign_out", to: "sessions#destroy"
       end
+
+      get "me", to: "me#show"
+      get "meta", to: "meta#show"
+
+      resources :employees, only: [ :index, :show, :create, :update ] do
+        resources :salary_revisions, only: [ :index, :create, :update, :destroy ]
+        resources :audits, only: :index
+      end
+
+      resources :countries, only: :index
+      resources :departments, only: :index
+      resources :levels, only: :index
+      resources :titles, only: :index
     end
   end
 
-  # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
-  # Can be used by load balancers and uptime monitors to verify that the app is live.
-  get "up" => "rails/health#show", as: :rails_health_check
-
-  # Defines the root path route ("/")
-  # root "posts#index"
+  # Outside the API namespace, so no bearer token is required. A load balancer has none.
+  get "healthz", to: "health#show", defaults: { format: :json }
+  get "readyz", to: "health#ready", defaults: { format: :json }
 end

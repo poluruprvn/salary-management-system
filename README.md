@@ -36,7 +36,9 @@ bin/dev                 # API on http://localhost:3000
 cd web && npm run dev   # SPA on http://localhost:5173
 ```
 
-`GET /healthz` checks the process and Postgres, returning 503 when the database is unreachable. `GET /readyz` adds a pending-migration check. No root route is defined. Nothing else is built yet: no models, no migrations, no resource endpoints.
+`GET /healthz` checks the process and Postgres, returning 503 when the database is unreachable. `GET /readyz` adds a pending-migration check. No root route is defined.
+
+The API lives under `/api/v1`. Its OpenAPI document is `swagger/v1/openapi.yaml`, generated from the request specs, and in development Swagger UI serves it at `http://localhost:3000/api-docs`. Regenerate it with `RAILS_ENV=test bin/rails rswag`.
 
 ## Tests
 
@@ -69,6 +71,7 @@ Backend configuration comes from `.env`, loaded by dotenv and gitignored:
 | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD` | Postgres connection; no defaults, all required |
 | `DATABASE_NAME`, `TEST_DATABASE_NAME` | Development and test databases |
 | `CORS_ORIGINS` | Comma-separated allowed origins, defaults to `http://localhost:5173` |
+| `BASE_CURRENCY` | Currency code `GET /api/v1/meta` reports, defaults to `USD` |
 
 `RAILS_MAX_THREADS`, `PORT`, and `RAILS_LOG_LEVEL` are read from the environment too. They are not in `.env.example`.
 
@@ -76,8 +79,8 @@ Encrypted credentials live in `config/credentials.yml.enc`. They need `config/ma
 
 ## Conventions
 
-- API-only: no sessions, no cookies, no view layer. Authentication is not wired up yet.
-- Collections return a `{ data, pagination }` envelope. CORS also exposes the `Link` and `X-Total-Count` headers, set alongside it.
+- API-only: no sessions, no cookies, no view layer. Every `/api/v1` endpoint except sign in and refresh takes a JWT bearer token.
+- Collections return a `{ data, pagination }` envelope. CORS also exposes the `Link` and `X-Total-Count` headers, set alongside it. A collection that does not paginate returns `{ data }` alone.
 - Active Job, Active Storage, Action Mailer, Action Mailbox, Action Text, and Action Cable are disabled in `config/application.rb`. Re-enable a framework there before using it.
 - Ruby style is `rubocop-rails-omakase` with no overrides. It puts spaces inside brackets: `[ :get, :post ]`.
 

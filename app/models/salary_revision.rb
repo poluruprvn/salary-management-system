@@ -40,11 +40,13 @@ class SalaryRevision < ApplicationRecord
 
   belongs_to :employee
 
+  attribute :effective_date, StrictDateType.new
+
   scope :live, -> { where(voided_at: nil) }
   # WHERE runs before the window, so a voided revision is never anyone's previous amount. A chained
   # where or find also runs first and hides rows from LAG, so page this with limit and offset only.
   scope :history_for, ->(employee) do
-    live.where(employee: employee).select(arel_table[Arel.star], PREVIOUS_AMOUNT).order(effective_date: :desc, id: :desc)
+    live.where(employee: employee).select("salary_revisions.*", PREVIOUS_AMOUNT).order(effective_date: :desc, id: :desc)
   end
 
   validates :amount_cents, presence: true, numericality: { only_integer: true, greater_than: 0, less_than: 1_000_000_000_000 }

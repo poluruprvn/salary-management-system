@@ -23,6 +23,9 @@ class Country < ApplicationRecord
 
   normalizes :name, with: ->(name) { name.squish }
 
+  # Names carry no unique index, so the code breaks a tie.
+  scope :by_name, -> { order("lower(countries.name)", :code) }
+
   validates :code, presence: true, uniqueness: true, format: { with: /\A[A-Z]{2}\z/ }
   validates :name, presence: true
   validates :employer_cost_multiplier, presence: true, numericality: { greater_than: 0, less_than: 100 }

@@ -43,13 +43,13 @@ class Employee < ApplicationRecord
   # first. level sorts by rank, since as text L10 sorts before L2. exit_date and salary can be
   # null, and Postgres puts nulls first on DESC.
   SORT_KEYS = {
-    "name" => { expression: Arel.sql("lower(employees.name)") },
-    "hire_date" => { expression: Arel.sql("employees.hire_date") },
-    "exit_date" => { expression: Arel.sql("employees.exit_date"), nulls_last: true },
-    "salary" => { expression: Arel.sql("current_salary.amount_cents"), nulls_last: true },
-    "department" => { expression: Arel.sql("lower(departments.name)"), joins: :department },
-    "country" => { expression: Arel.sql("lower(countries.name)"), joins: :country },
-    "level" => { expression: Arel.sql("levels.rank"), joins: :level }
+    "name" => { asc: "lower(employees.name) ASC", desc: "lower(employees.name) DESC" },
+    "hire_date" => { asc: "employees.hire_date ASC", desc: "employees.hire_date DESC" },
+    "exit_date" => { asc: "employees.exit_date ASC NULLS LAST", desc: "employees.exit_date DESC NULLS LAST" },
+    "salary" => { asc: "current_salary.amount_cents ASC NULLS LAST", desc: "current_salary.amount_cents DESC NULLS LAST" },
+    "department" => { asc: "lower(departments.name) ASC", desc: "lower(departments.name) DESC", joins: :department },
+    "country" => { asc: "lower(countries.name) ASC", desc: "lower(countries.name) DESC", joins: :country },
+    "level" => { asc: "levels.rank ASC", desc: "levels.rank DESC", joins: :level }
   }.freeze
 
   # No sr.id tiebreak. The partial unique index allows at most one live row per date, but the
@@ -82,11 +82,16 @@ class Employee < ApplicationRecord
   normalizes :email, with: ->(email) { email.strip.downcase }
   normalizes :title, with: ->(title) { title.squish }
 
-  validates :name, presence: true
-  validates :email, presence: true, uniqueness: { case_sensitive: false },
+  attribute :hire_date, StrictDateType.new
+  attribute :exit_date, StrictDateType.new
+
+  # Each is indexed, and a value past a few thousand bytes no longer fits a btree entry: a 500.
+  validates :name, presence: true, length: { maximum: 255 }
+  validates :email, presence: true, length: { maximum: 255 }, uniqueness: { case_sensitive: false },
                     format: { with: URI::MailTo::EMAIL_REGEXP, allow_blank: true }
-  validates :title, presence: true
+  validates :title, presence: true, length: { maximum: 255 }
   validates :hire_date, presence: true
+  validate :exit_date_is_a_date
   validate :exit_date_not_before_hire_date
   validate :hire_date_not_after_live_revisions, if: -> { persisted? && hire_date_changed? }
 
@@ -130,22 +135,30 @@ class Employee < ApplicationRecord
 
   def self.with_salary_as_of(date)
     joins(sanitize_sql_array([ SALARY_AS_OF_JOIN, { as_of: date } ]))
-      .select(arel_table[Arel.star],
+      .select("employees.*",
               "current_salary.amount_cents AS current_salary_amount_cents",
               "current_salary.effective_date AS current_salary_effective_date")
+  end
+
+  # Every employee ever, not an as_of set. The count ranks the spelling most people already use first.
+  def self.title_counts(term)
+    relation = group(:title).select(:title, "COUNT(*) AS employee_count")
+      .order("employee_count DESC", "lower(employees.title)", :title)
+    term = term.to_s.squish
+    return relation if term.empty?
+
+    relation.where("employees.title ILIKE ?", "%#{sanitize_sql_like(term)}%")
   end
 
   # Sorting by salary reads the lateral, so it needs with_salary_as_of on the same relation.
   def self.sorted_by(sort)
     sort = sort.to_s.presence || "name"
     key = SORT_KEYS.fetch(sort.delete_prefix("-")) { raise UnknownSortKey, sort }
-    order = sort.start_with?("-") ? key[:expression].desc : key[:expression].asc
-    order = order.nulls_last if key[:nulls_last]
 
     relation = key[:joins] ? joins(key[:joins]) : all
     # Every key has ties, so the id tiebreak fixes their order and offset pages never repeat or
     # skip a row.
-    relation.order(order, :id)
+    relation.order(key[sort.start_with?("-") ? :desc : :asc], :id)
   end
 
   def status_as_of(date = Date.current)
@@ -163,7 +176,21 @@ class Employee < ApplicationRecord
     salary_revisions.live.where(effective_date: ..date).order(effective_date: :desc).first
   end
 
+  # The employee's own changes and their revisions', newest first. The gem orders on created_at
+  # alone, which can tie, and offset pages need the id to break it.
+  def audit_trail
+    own_and_associated_audits.order(id: :desc)
+  end
+
   private
+    # A value that is not a date casts to nil, which on this column would clear the exit date. Only
+    # null and an empty string mean no exit date.
+    def exit_date_is_a_date
+      return if exit_date || exit_date_before_type_cast.in?([ nil, "" ])
+
+      errors.add(:exit_date, "is not a valid date")
+    end
+
     def exit_date_not_before_hire_date
       return if exit_date.blank? || hire_date.blank?
 

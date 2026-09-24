@@ -16,5 +16,7 @@ class Department < ApplicationRecord
 
   normalizes :name, with: ->(name) { name.squish }
 
+  scope :by_name, -> { order("lower(departments.name)") }
+
   validates :name, presence: true, uniqueness: { case_sensitive: false }
 end

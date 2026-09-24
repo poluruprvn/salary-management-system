@@ -2,7 +2,7 @@
 
 Frontend SPA. Root `CLAUDE.md` covers the backend.
 
-There is no API contract yet. `/healthz` and `/readyz` are the only routes. One convention is settled: collections return a `{ data, pagination }` envelope, with `Link` and `X-Total-Count` also set as response headers.
+The API contract is OpenAPI 3, generated from the backend's request specs into `swagger/v1/openapi.yaml`. With the API running in development, Swagger UI serves it at `http://localhost:3000/api-docs`. Read it there rather than guessing a shape. Paginated collections return a `{ data, pagination }` envelope, with `Link` and `X-Total-Count` also set as response headers. Unpaginated ones return `{ data }`.
 
 ## State of this directory
 
