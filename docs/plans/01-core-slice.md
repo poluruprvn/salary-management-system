@@ -21,6 +21,7 @@ This plan is the backend only: sign in, employees, and salary revision history. 
 - **Auditing is the `audited` gem**, not hand-rolled. It writes inside the save transaction, already skips empty changesets, and its railtie wires the actor sweeper into `ActionController::API`.
 - **The API contract is generated, not written.** rswag turns the request specs into OpenAPI 3, served with Swagger UI at `/api-docs`. A hand-written document drifts from the API on day one.
 - **Nothing is destroyed.** Revisions get `voided_at`, employees get `exit_date`. No `DELETE /employees/:id`.
+- **No closed set lives in the database.** `reason` is a plain string column. The four values live in the model validation and in `GET /api/v1/meta`. A check constraint or a Postgres enum needs a migration to add a fifth value, and until that migration runs the write raises `ActiveRecord::StatementInvalid`, which is a 500 and not a 422. The same rule covers later tables: no `IN` check and no enum type.
 
 ### `voided_at` on `salary_revisions`
 
@@ -54,23 +55,23 @@ Every one of them takes `id: :uuid, default: -> { "uuidv7()" }`, and every refer
 
 | Table | Columns and constraints |
 | --- | --- |
-| `users` | `email` unique, `password_digest`, `name` |
-| `refresh_tokens` | `user_id` fk, `token_digest` unique, `expires_at` (indexed), `last_used_at` |
+| `users` | `email` not null with a unique index on `lower(email)`, `password_digest`, `name` |
+| `refresh_tokens` | `user_id` fk `on_delete: :cascade`, `token_digest` unique, `expires_at` (indexed) |
 | `countries` | `string code limit: 2` unique + check, `name`, `employer_cost_multiplier` decimal(6,4) default 1.0 check `> 0` |
-| `departments` | `name` unique |
-| `levels` | `code` unique, `name`, `rank` integer **not null** unique |
-| `employees` | `name` not null, `email` unique, `country_id`/`department_id`/`level_id` fks not null, `title` not null, `hire_date` not null, `exit_date` nullable, check `exit_date IS NULL OR exit_date >= hire_date`, `t.timestamps` |
-| `salary_revisions` | `employee_id` fk, `amount_cents` bigint check `> 0`, `effective_date`, `reason` + check over the four values, `note` text, `voided_at`, `t.timestamps` (both not null), **partial unique index on `(employee_id, effective_date) WHERE voided_at IS NULL`**, index on `updated_at` |
+| `departments` | `name` not null with a unique index on `lower(name)` |
+| `levels` | `code` not null with a unique index on `lower(code)`, `name`, `rank` integer **not null** unique |
+| `employees` | `name` not null, `email` not null with a unique index on `lower(email)`, `country_id`/`department_id`/`level_id` fks not null, `title` not null, `hire_date` not null, `exit_date` nullable, check `exit_date IS NULL OR exit_date >= hire_date`, `t.timestamps` |
+| `salary_revisions` | `employee_id` fk, `amount_cents` bigint check `> 0`, `effective_date`, `reason` string, `note` text, `voided_at`, `t.timestamps` (both not null), **partial unique index on `(employee_id, effective_date) WHERE voided_at IS NULL`**, index on `updated_at` |
 
 Load bearing details:
 
 - `uuidv7()` is a Postgres 18 builtin. `compose.yaml` pins `postgres:18-alpine`, so it is there. On an older server the function does not exist and every insert fails, which is a loud failure on the first migration rather than a quiet one later.
 - There is no access token table. That is the point of the JWT. `refresh_tokens` is the only auth row, and it is what sign out deletes.
-- The partial unique index is the CSV upsert key, the index the lateral scans backwards, and the guard against two live revisions on one day. The deferred freeze detects work done after a register was issued, and a voided or corrected revision moves only `updated_at`, so `updated_at` is the indexed column. `updated_at >= created_at` always holds, so one index answers inserts and edits both. `employees` needs the same index for a backdated hire or exit.
-- The `audits` table comes from `rails g audited:install`, but the generated migration **must be edited before it runs**. Its template hardcodes `auditable_id` and `associated_id` as `:integer`, and only `user_id` is configurable. An integer column given a UUID does not raise: Rails casts the string through `to_i`, so `01a0d24e-...` becomes `1` and every audit row silently points at whatever record holds that id. Generate with `--audited-user-id-column-type=uuid --audited-changes-column-type=jsonb`, then change the two polymorphic id columns to `:uuid` and the table to `id: :uuid, default: -> { "uuidv7()" }` by hand. `jsonb` over the default `text` is worth taking here because the trail is read back through an endpoint, not just written.
+- The partial unique index is the CSV upsert key, the index the lateral scans backwards, and the guard against two live revisions on one day. The deferred freeze detects work done after a register was issued, and neither a void nor a correction moves `created_at`, so `updated_at` is the indexed column. `updated_at >= created_at` always holds, so one index answers inserts and edits both. `employees` needs the same index for a backdated hire or exit.
+- The `audits` table comes from `rails g audited:install`, but the generated migration **must be edited before it runs**. Its template hardcodes `auditable_id` and `associated_id` as `:integer`, and only `user_id` is configurable. An integer column given a UUID does not raise: Rails casts the string through `to_i`, so `01a0d24e-...` becomes `1`. Every row collapses onto the same id, and because the uuid cast rejects `1` on the way back, `auditable` resolves to nil rather than to a wrong record. Generate with `--audited-user-id-column-type=uuid --audited-changes-column-type=jsonb`, then change the two polymorphic id columns to `:uuid` and the table to `id: :uuid, default: -> { "uuidv7()" }` by hand. The generator also leaves every column nullable: `auditable_id`, `auditable_type`, `action`, `version` and `created_at` take `null: false`, because a trail row missing any of them cannot be read back, and Postgres sorts nulls first on `DESC` so a row with no `created_at` would head the trail. `jsonb` over the default `text` is worth taking here because the trail is read back through an endpoint, not just written.
 - The `auditable` and `user` associations are polymorphic, so there are no foreign keys and no cascade can erase the trail, which is what this table needs anyway. The generator already indexes `(associated_type, associated_id)` for reading one employee's history.
 - `countries.code` is `string limit: 2`, not `char(2)`: `bpchar` is blank padded and its comparison semantics surprise people.
-- Emails are downcased before validation, so a plain unique index catches a duplicate that differs only in case. The deferred importer resolves a spreadsheet's `engineering` to the `Engineering` row with a `lower()` comparison over nine rows. Neither stops "Eng" versus "Engineering"; only the closed set does.
+- Email uniqueness is a unique index on `lower(email)`, not on `email`. The model downcases before validation, but `insert_all` in the seeds and `upsert_all` in the deferred importer skip that callback, so a plain index would let `Ada@acme.com` in beside `ada@acme.com`. The importer also needs this index by name as its `upsert_all` conflict target. `departments.name` and `levels.code` get the same treatment, which also gives the deferred importer's `engineering` to `Engineering` lookup an index instead of a scan. Neither stops "Eng" versus "Engineering"; only the closed set does.
 - `employees.email` is unique on purpose. A duplicate email in an HR system is a data error worth surfacing, and the deferred importer must report it as "email already used by Ada Lovelace", not as a raw constraint violation. With `employee_number` gone, email is also the only human-typed key an imported spreadsheet can match on.
 - Indexes: btree on the three fks plus `hire_date`, `exit_date` and `updated_at`; btree on `(lower(name), id)` for the default sort, per Phase 2; btree on `title` for equality filtering.
 - **Search has no index.** `q` is `ILIKE '%term%'` over `name`, `email` and `title`, which a btree cannot serve because a leading wildcard leaves no prefix to seek on, so it is a sequential scan. At 10,000 rows that is single digit milliseconds against a 300 ms budget. It is linear in row count, so it is the first thing to revisit at roughly ten times this size.
@@ -93,7 +94,7 @@ No model mints its own `id`. The column default is the only place a UUID comes f
 
 Each uniqueness validation is a read followed by a write, so the index is what actually holds the line. The validation buys a 422 naming a field; Phase 4 catches what falls between them.
 
-Sort names on `lower(name)`, not `name`. This database collates by code point, so `ORDER BY name` puts every capital before every lowercase: `Bob, Zoe, adam, alice`. That is page 1 of the default sort on the first screen anyone opens. The `(lower(name), id)` index serves the fixed version with a plain index scan. Accented names still sort after `z`, accepted for English data.
+Sort names on `lower(name)`, not `name`. `postgres:18-alpine` is musl, whose `strcoll` is byte comparison, so `ORDER BY name` puts every capital before every lowercase even under `en_US.utf8`: `Bob, Zoe, adam, alice`. That is page 1 of the default sort on the first screen anyone opens. The `(lower(name), id)` index serves the fixed version with a plain index scan, and it is also what keeps the order the same on a glibc image, where the unfixed query would sort as a reader expects. Accented names still sort after `z`, accepted for English data.
 
 **Verify:** `bundle exec rspec spec/models` green, including the exit-date check constraint and the partial unique index.
 
