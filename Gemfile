@@ -25,6 +25,7 @@ group :development, :test do
 end
 
 group :development do
+  gem "annotaterb", require: false
   gem "rswag-api"
   gem "rswag-ui"
 end

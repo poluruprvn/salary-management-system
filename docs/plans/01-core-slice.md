@@ -86,9 +86,11 @@ Load bearing details:
 `app/models/{user,refresh_token,country,department,level,employee,salary_revision}.rb`, plus `spec/factories/` and `spec/models/`.
 
 - `User`: `has_secure_password reset_token: false`. Rails 8.1 defaults that to `true`, and password reset is out of scope. `before_validation` downcases the email.
-- `RefreshToken`: `.issue!(user)` returns the raw `SecureRandom.urlsafe_base64(32)` once and stores only `Digest::SHA256.hexdigest`. `scope :active`. `.claim!(raw)` finds the live row, deletes it and issues a replacement, so every refresh rotates. Expired rows are swept during refresh; there are no background jobs.
-- `Employee`: `status_as_of(date)`, scopes `active_as_of` / `pending_as_of` / `exited_as_of`, `salary_as_of(date)` for the single-record path. Validates uniqueness of `email`, presence of every not-null column, and downcases the email before validation.
-- `SalaryRevision`: `scope :live`, validates `effective_date` within the hire and exit dates, `reason` inclusion, `amount_cents > 0`, and uniqueness of `effective_date` scoped to `employee_id` across live rows. Moving an employee's `exit_date` earlier does not revalidate revisions already on file, so one can end up dated after the exit. It is inert: the register pays active days only, and the lateral is read through a status the same date derives. The alternative is a cascade nobody asked for.
+- `RefreshToken`: `.issue!(user)` returns the raw `SecureRandom.urlsafe_base64(32)` once and stores only `Digest::SHA256.hexdigest`. `scope :active`. `.claim!(raw)` locks the live row, deletes it and issues a replacement, so every refresh rotates. The lock is what makes that exclusive: without it two concurrent claims on one token both succeed and the user ends up with two live rows. Expired rows are swept during refresh; there are no background jobs.
+- `Employee`: `status_as_of(date)`, scopes `active_as_of` / `pending_as_of` / `exited_as_of`, `salary_as_of(date)` for the single-record path. Validates uniqueness and `URI::MailTo::EMAIL_REGEXP` format of `email`, and presence of every not-null column. The format stays in the model, not a check constraint: the same argument as `reason`, a constraint makes a bad address a 500. `normalizes` strips and downcases `email` and squishes `title`: the `lower(email)` index does not see a stray space, so without it an imported row with one becomes a second employee rather than a match.
+- `salary_as_of` returns nothing unless the employee is active that day. Salary in force is a property of an employed day, and the Phase 5 lateral carries the same window.
+- `SalaryRevision`: `scope :live`, validates `effective_date` within the hire and exit dates, `reason` inclusion, `amount_cents > 0`, and uniqueness of `effective_date` scoped to `employee_id` across live rows. Moving an employee's `exit_date` earlier does not revalidate revisions already on file, so one can end up dated after the exit. The alternative is a cascade nobody asked for.
+- The window check runs only when `effective_date` or `employee_id` moves, never on every save. On every save it freezes the stranded row instead: voiding is the only retraction path, so a revision that cannot be saved is a raise that cannot be withdrawn.
 
 No model mints its own `id`. The column default is the only place a UUID comes from, and `id` is never in a permitted params list.
 
@@ -172,7 +174,7 @@ There is no `app/queries/`. Reads are scopes on the Phase 2 models, writes are s
 
 Three scopes on `Employee`, added to the file Phase 2 created.
 
-`filtered(filters)` handles `q`, `department_id[]`, `country_id[]`, `level_id[]`, `title` and `status`. Filters only: no lateral, no order. `q` matches `name`, `email` and `title` with `ILIKE`. A `q` that parses as a UUID is an equality match on `id` instead, per Phase 1.
+`filtered(filters)` handles `q`, `department_id[]`, `country_id[]`, `level_id[]`, `title` and `status`. `status` is checked against `Employee::STATUSES`, which is also what `GET /meta` publishes: an unchecked filter naming a status `status_as_of` cannot return is an empty page and no error. Filters only: no lateral, no order. `q` matches `name`, `email` and `title` with `ILIKE`. A `q` that parses as a UUID is an equality match on `id` instead, per Phase 1.
 
 `with_salary_as_of(date)` adds the lateral. `sorted_by(key)` adds the order and whatever join the key needs.
 
@@ -306,7 +308,7 @@ One consequence to know. Liveness now fails whenever Postgres does, and under an
 
 ## Phase 7: Seeds
 
-`db/seeds.rb`, deterministic via a fixed `Random` seed, idempotent via `insert_all` with `unique_by`, wrapped in `Audited.auditing_enabled = false`. Deterministic covers the field values, not the ids: a UUID comes from the database and differs between machines, so nothing may key on a seeded id.
+`db/seeds.rb`, deterministic via a fixed `Random` seed, idempotent via `insert_all` with `unique_by`, wrapped in `Audited.auditing_enabled = false`. `insert_all` runs no validations, so the seed builds `reason` from `SalaryRevision::REASONS` and dates inside the employment window itself. Same for the deferred importer's `upsert_all`. Deterministic covers the field values, not the ids: a UUID comes from the database and differs between machines, so nothing may key on a seeded id.
 
 **First line: `return` unless the environment is development or test.** `bin/docker-entrypoint` runs `db:prepare` before the server, and that seeds whenever it creates a database. So the first production boot against an empty database runs this file and dies on `NameError`, because Faker is not in the production bundle. Bundling Faker would be worse: 10,000 invented employees in production.
 
