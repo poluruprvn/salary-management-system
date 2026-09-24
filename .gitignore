@@ -28,3 +28,6 @@
 
 # Ignore locally installed gems.
 /vendor/bundle
+
+# Ignore the RSpec example status store used by --only-failures.
+/spec/examples.txt

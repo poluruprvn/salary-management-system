@@ -47,18 +47,18 @@ bundle exec rspec spec/models/thing_spec.rb:42   # single file or example
 
 `.rspec` loads only `spec_helper`. Each spec file must `require "rails_helper"` itself to pull in Rails. The suite uses its own database (`TEST_DATABASE_NAME`).
 
-`factory_bot_rails` is available for test data. No specs and no `spec/factories/` exist yet, so `rspec` reports 0 examples.
+`factory_bot_rails`, `faker` and `shoulda-matchers` are available for test data and matchers. No specs and no `spec/factories/` exist yet, so `rspec` reports 0 examples.
 
 ## Checks
 
 ```sh
-bin/ci                  # setup + rubocop + bundler-audit + brakeman
+bin/ci                  # setup + rubocop + rspec + bundler-audit + brakeman + OpenAPI freshness
 bin/rubocop -a          # autocorrect
 cd web && npm run lint  # oxlint
 cd web && npm run build # tsc -b && vite build
 ```
 
-`bin/ci` starts with a `Setup` step that re-runs `bin/setup --skip-server`, so it also reinstalls gems and prepares the database. It does **not** run the test suite. Run `bundle exec rspec` separately.
+`bin/ci` starts with a `Setup` step that re-runs `bin/setup --skip-server`, so it also reinstalls gems and prepares the database. It passes `SEED_EMPLOYEE_COUNT=50`, because `db:prepare` seeds whenever it creates the database and a fresh checkout would otherwise seed the full set before linting. The last step regenerates `swagger/v1/openapi.yaml` from the request specs and fails if the committed copy differs.
 
 ## Configuration
 

@@ -11,7 +11,7 @@ Backend (repo root):
 - `bin/dev`: Rails server on port 3000.
 - `docker compose up -d --wait postgres`: compose runs only the database.
 - `bundle exec rspec`: test suite. Single file or example: `bundle exec rspec spec/models/foo_spec.rb:42`.
-- `bin/ci`: re-runs `bin/setup --skip-server`, then rubocop, bundler-audit, brakeman. **It does not run rspec.** Run rspec separately before calling a change verified.
+- `bin/ci`: re-runs setup with `SEED_EMPLOYEE_COUNT=50`, then rubocop, rspec, bundler-audit, brakeman, and a check that the committed `swagger/` OpenAPI file is up to date.
 - `bin/rubocop`, `bin/rubocop -a`: lint, autocorrect.
 
 Frontend (`web/`):
