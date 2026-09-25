@@ -68,6 +68,15 @@ RSpec.describe "Countries" do
       end
     end
 
+    [ {}, { employer_cost_multiplier: [ "1.3" ] }, { employer_cost_multiplier: nil }, { employer_cost_multiplier: "" } ].each do |body|
+      it "refuses #{body.to_json} as a missing parameter" do
+        update(body)
+
+        expect(response).to have_http_status(:bad_request)
+        expect(country.reload.employer_cost_multiplier).to eq(BigDecimal("1.2"))
+      end
+    end
+
     it "ignores code and name" do
       update(employer_cost_multiplier: "1.3", code: "DE", name: "Germany")
 

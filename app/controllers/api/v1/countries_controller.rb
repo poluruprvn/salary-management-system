@@ -7,7 +7,8 @@ module Api
 
       # Code and name are the closed set's identity, so only the multiplier is editable.
       def update
-        country = Countries::Update.call(Country.find(params[:id]), params.permit(:employer_cost_multiplier).to_h)
+        multiplier = params.permit(:employer_cost_multiplier).require(:employer_cost_multiplier)
+        country = Countries::Update.call(Country.find(params[:id]), employer_cost_multiplier: multiplier)
         render json: CountrySerializer.new(country)
       end
     end
