@@ -24,7 +24,7 @@ const schema = z.object({
 
 // Only a path on this origin. The browser reads //host as another host.
 function safeRedirect(target: string | undefined): string {
-  return target?.startsWith('/') && !target.startsWith('//') && !target.startsWith('/\\') ? target : '/employees'
+  return target?.startsWith('/') && !target.startsWith('//') && !target.startsWith('/\\') ? target : '/analytics'
 }
 
 export function SignInPage() {

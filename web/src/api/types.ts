@@ -26,3 +26,20 @@ export type RevisionInput =
   paths['/api/v1/employees/{employee_id}/salary_revisions']['post']['requestBody']['content']['application/json']
 export type RevisionPatch =
   paths['/api/v1/employees/{employee_id}/salary_revisions/{id}']['patch']['requestBody']['content']['application/json']
+
+type Ok<P extends keyof paths> = paths[P] extends { get: { responses: { 200: { content: { 'application/json': infer T } } } } }
+  ? T
+  : never
+
+export type RunRate = Ok<'/api/v1/analytics/run_rate'>
+export type RunRateGroupBy = RunRate['group_by']
+export type TrendPoint = Ok<'/api/v1/analytics/trend'>['data'][number]
+type Distribution = Ok<'/api/v1/analytics/distribution'>
+export type DistributionRow = Distribution['data'][number]
+export type DistributionGroupBy = Distribution['group_by']
+export type DistributionSort = NonNullable<
+  NonNullable<paths['/api/v1/analytics/distribution']['get']['parameters']['query']>['sort']
+>
+export type Cohort = Ok<'/api/v1/analytics/cohorts'>['data'][number]
+export type Outlier = Ok<'/api/v1/analytics/outliers'>['data'][number]
+export type OutlierDirection = Outlier['direction']

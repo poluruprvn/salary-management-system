@@ -4,13 +4,20 @@ Frontend SPA. Root `CLAUDE.md` covers the backend.
 
 The API contract is OpenAPI 3, generated from the backend's request specs into `swagger/v1/openapi.yaml`. With the API running in development, Swagger UI serves it at `http://localhost:3000/api-docs`. Read it there rather than guessing a shape. Paginated collections return a `{ data, pagination }` envelope, with `Link` and `X-Total-Count` also set as response headers. Unpaginated ones return `{ data }`.
 
-## State of this directory
+## Stack
 
-`src/App.tsx` and `src/App.css` are the untouched Vite starter page. The CSS is plain and hand-written, not Tailwind, and references a sprite at `public/icons.svg`. Replace both when building real screens. Do not treat `App.css` as the styling precedent.
+- Routing: TanStack Router. Every route is declared by hand in `src/pages/router.tsx`, with a zod schema for its search params. Page files sit under `src/pages/routegen/`, named `index.page.tsx`, with the page's `data.ts` and `search.ts` beside it.
+- API client: `openapi-fetch`, typed by `src/api/schema.d.ts`. Regenerate it with `npm run api:types` after the OpenAPI file changes. `src/api/types.ts` names the shapes pages use.
+- Data fetching: `useApi` in `src/hooks/use-api.ts`, not TanStack Query. It refetches after any write. On a failed reload it keeps the last data and sets `error`, so show the error whenever `error` is set.
+- State: zustand, for the session only (`src/auth/session.ts`). Everything a page shows is in the URL.
+- Forms: react-hook-form with zod. `applyApiErrors` puts a 422's details on the fields.
+- Charts: shadcn's `chart` on Recharts, for the trend line only.
 
-Not yet chosen: router, data fetching/API client, state management, test runner.
+The API base URL is `VITE_API_URL`, default `http://localhost:3000`. The API's `CORS_ORIGINS` must list whatever origin this app is served from.
 
-Nothing reads `import.meta.env`, so there is no API base URL variable yet. The API is at `http://localhost:3000`. Its `CORS_ORIGINS` must list whatever origin this app is served from.
+## Testing
+
+`npm test` runs vitest in jsdom with `TZ=America/Los_Angeles`, so a date printed in local time instead of UTC fails. MSW serves the API: default handlers in `src/test/server.ts`, data in `src/test/fixtures.ts`. Override a handler per test with `server.use`. `renderApp(path)` in `src/test/render.tsx` mounts the whole router at a URL, signed in by default. The toaster is not mounted, so toasts cannot be asserted.
 
 ## Type checking
 

@@ -1,14 +1,20 @@
 import type {
   Audit,
+  Cohort,
   Country,
   Department,
+  DistributionRow,
   Employee,
   Level,
   Meta,
+  Outlier,
   Pagination,
+  RunRate,
+  RunRateGroupBy,
   SalaryHistoryEntry,
   TitleCount,
   TokenPair,
+  TrendPoint,
   User,
 } from '@/api/types'
 
@@ -118,4 +124,110 @@ export function page<T>(data: T[], pagination: Partial<Pagination> = {}): { data
       ...pagination,
     },
   }
+}
+
+// The two groups swap places between gross and loaded, so a test can tell the bases apart by order.
+export function runRate(groupBy: RunRateGroupBy = 'department'): RunRate {
+  const groups = { department: departments, country: countries, level: levels }[groupBy]
+
+  return {
+    as_of: meta.today,
+    group_by: groupBy,
+    data: [
+      {
+        group: { id: groups[0].id, name: groups[0].name },
+        headcount: 3,
+        salaried: 2,
+        gross_cents: 30_000_000,
+        loaded_cents: 30_000_000,
+      },
+      {
+        group: { id: groups[1].id, name: groups[1].name },
+        headcount: 1,
+        salaried: 1,
+        gross_cents: 20_000_000,
+        loaded_cents: 30_500_000,
+      },
+    ],
+    totals: { headcount: 4, salaried: 3, gross_cents: 50_000_000, loaded_cents: 60_500_000 },
+  }
+}
+
+export const trend: TrendPoint[] = [
+  {
+    date: '2025-09-30',
+    headcount: 3,
+    salaried: 3,
+    gross_cents: 45_000_000,
+    loaded_cents: 54_000_000,
+    hires: null,
+    exits: null,
+    raises: null,
+    raise_delta_cents: null,
+  },
+  {
+    date: meta.today,
+    headcount: 4,
+    salaried: 3,
+    gross_cents: 50_000_000,
+    loaded_cents: 60_500_000,
+    hires: 1,
+    exits: 0,
+    raises: 1,
+    raise_delta_cents: 5_000_000,
+  },
+]
+
+export const distributionRow: DistributionRow = {
+  group: { id: levels[0].id, name: levels[0].name },
+  headcount: 7,
+  min_cents: 8_000_000,
+  p25_cents: 9_500_000,
+  median_cents: 11_000_000,
+  p75_cents: 12_500_000,
+  max_cents: 16_000_000,
+}
+
+export const cohorts: Cohort[] = [
+  {
+    level: { id: levels[0].id, name: levels[0].name },
+    country: { id: countries[0].id, name: countries[0].name },
+    headcount: 7,
+    evaluated: true,
+    p25_cents: 9_500_000,
+    p50_cents: 11_000_000,
+    p75_cents: 12_500_000,
+    lower_fence_cents: 5_000_000,
+    upper_fence_cents: 17_000_000,
+    outliers_below: 0,
+    outliers_above: 1,
+    reason: null,
+  },
+  {
+    level: { id: levels[1].id, name: levels[1].name },
+    country: { id: countries[1].id, name: countries[1].name },
+    headcount: 3,
+    evaluated: false,
+    p25_cents: 15_000_000,
+    p50_cents: 16_000_000,
+    p75_cents: 17_000_000,
+    lower_fence_cents: null,
+    upper_fence_cents: null,
+    outliers_below: null,
+    outliers_above: null,
+    reason: 'fewer than 5 people',
+  },
+]
+
+export const outlier: Outlier = {
+  id: ada.id,
+  name: ada.name,
+  department: departments[0],
+  level: { id: levels[0].id, name: levels[0].name },
+  country: { id: countries[0].id, name: countries[0].name },
+  amount_cents: 18_000_000,
+  cohort_median_cents: 11_000_000,
+  cohort_headcount: 7,
+  direction: 'above',
+  distance_pct: 63.6,
 }

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { EmployeeSort, EmployeeStatus } from '@/api/types'
 
-export const SORT_KEYS = ['name', 'hire_date', 'exit_date', 'salary', 'department', 'country', 'level'] as const
+const SORT_KEYS = ['name', 'hire_date', 'exit_date', 'salary', 'department', 'country', 'level'] as const
 
 const SORTS = SORT_KEYS.flatMap((key) => [key, `-${key}`] as const) satisfies EmployeeSort[]
 

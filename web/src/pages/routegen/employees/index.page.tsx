@@ -5,9 +5,10 @@ import type { Employee, Pagination } from '@/api/types'
 import { ErrorPanel } from '@/components/error-panel'
 import { FacetedFilter } from '@/components/faceted-filter'
 import { PageNav } from '@/components/page-nav'
+import { PastEnd } from '@/components/past-end'
 import { SearchInput } from '@/components/search-input'
 import { Button } from '@/components/ui/button'
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -189,23 +190,7 @@ function Results({ employees, pagination, search, filtered, update }: ResultsPro
     )
   }
 
-  if (pagination && pagination.page > pagination.total_pages) {
-    return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyTitle>This page is past the end</EmptyTitle>
-          <EmptyDescription>
-            There are {pagination.total_pages} pages of {peopleCount(pagination.total)}.
-          </EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button variant="outline" onClick={() => update({ page: pagination.total_pages })}>
-            Go to the last page
-          </Button>
-        </EmptyContent>
-      </Empty>
-    )
-  }
+  if (pagination && pagination.page > pagination.total_pages) return <PastEnd pagination={pagination} onPage={(page) => update({ page })} />
 
   return (
     <div className="overflow-hidden rounded-lg border">

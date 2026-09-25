@@ -15,6 +15,17 @@ import { useSession } from '@/auth/session'
 import { AppError, AppLayout } from '@/components/layout/app-layout'
 import { Spinner } from '@/components/ui/spinner'
 import { loadAppData } from '@/data/app'
+import { DistributionPage } from '@/pages/routegen/analytics/distribution/index.page'
+import { AnalyticsPage } from '@/pages/routegen/analytics/index.page'
+import { OutliersPage } from '@/pages/routegen/analytics/outliers/index.page'
+import {
+  DISTRIBUTION_DEFAULTS,
+  distributionSearch,
+  OUTLIERS_DEFAULTS,
+  OVERVIEW_DEFAULTS,
+  outliersSearch,
+  overviewSearch,
+} from '@/pages/routegen/analytics/search'
 import { EmployeePage } from '@/pages/routegen/employees/[employeeId]/index.page'
 import { EmployeesPage } from '@/pages/routegen/employees/index.page'
 import { NewEmployeePage } from '@/pages/routegen/employees/new/index.page'
@@ -24,6 +35,7 @@ import {
   employeeListSearch,
   employeeSearch,
 } from '@/pages/routegen/employees/search'
+import { CountriesPage } from '@/pages/routegen/settings/countries/index.page'
 import { SignInPage } from '@/pages/sign-in'
 
 const rootRoute = createRootRoute({
@@ -32,8 +44,8 @@ const rootRoute = createRootRoute({
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-24 text-center">
       <h1 className="font-heading text-lg font-semibold">Nothing here</h1>
       <p className="text-sm text-muted-foreground">That page does not exist.</p>
-      <Link to="/employees" className="text-sm underline underline-offset-4">
-        Go to employees
+      <Link to="/analytics" className="text-sm underline underline-offset-4">
+        Go to analytics
       </Link>
     </div>
   ),
@@ -81,7 +93,7 @@ const indexRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: '/employees' })
+    throw redirect({ to: '/analytics' })
   },
 })
 
@@ -107,9 +119,48 @@ const employeeRoute = createRoute({
   component: EmployeePage,
 })
 
+const analyticsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'analytics',
+  validateSearch: overviewSearch,
+  search: { middlewares: [stripSearchParams(OVERVIEW_DEFAULTS)] },
+  component: AnalyticsPage,
+})
+
+const distributionRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'analytics/distribution',
+  validateSearch: distributionSearch,
+  search: { middlewares: [stripSearchParams(DISTRIBUTION_DEFAULTS)] },
+  component: DistributionPage,
+})
+
+const outliersRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'analytics/outliers',
+  validateSearch: outliersSearch,
+  search: { middlewares: [stripSearchParams(OUTLIERS_DEFAULTS)] },
+  component: OutliersPage,
+})
+
+const countriesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'settings/countries',
+  component: CountriesPage,
+})
+
 const routeTree = rootRoute.addChildren([
   signInRoute,
-  appRoute.addChildren([indexRoute, employeesRoute, newEmployeeRoute, employeeRoute]),
+  appRoute.addChildren([
+    indexRoute,
+    employeesRoute,
+    newEmployeeRoute,
+    employeeRoute,
+    analyticsRoute,
+    distributionRoute,
+    outliersRoute,
+    countriesRoute,
+  ]),
 ])
 
 export function createAppRouter(history?: RouterHistory) {

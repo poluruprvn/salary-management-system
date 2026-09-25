@@ -42,3 +42,24 @@ const percent = new Intl.NumberFormat(LOCALE, {
 export function formatChange(amount: number, previous: number): string {
   return percent.format((amount - previous) / previous)
 }
+
+// For a chart axis, where $1.2M reads faster than $1,234,567.
+export function formatCompactMoney(cents: number, currency: Currency): string {
+  return new Intl.NumberFormat(LOCALE, {
+    style: 'currency',
+    currency: currency.base_currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(cents / 10 ** currency.minor_unit)
+}
+
+const signedPercent = new Intl.NumberFormat(LOCALE, {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+  signDisplay: 'exceptZero',
+})
+
+// For a percent the API already computed, like 12.5 for 12.5%.
+export function formatPercent(value: number): string {
+  return `${signedPercent.format(value)}%`
+}

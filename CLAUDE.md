@@ -17,7 +17,7 @@ Backend (repo root):
 
 Frontend (`web/`):
 - `npm run dev` (port 5173), `npm run build` (`tsc -b && vite build`), `npm run lint` (oxlint), `npm run knip` (unused files, exports and dependencies).
-- No test runner and no formatter are installed.
+- `npm test`: vitest with jsdom and MSW. No formatter is installed.
 
 ## Setup
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatChange, formatMoney, parseMoney } from '@/lib/money'
+import { formatChange, formatCompactMoney, formatMoney, formatPercent, parseMoney } from '@/lib/money'
 
 const usd = { base_currency: 'USD', minor_unit: 2 }
 
@@ -44,5 +44,20 @@ describe('formatChange', () => {
     expect(formatChange(13_200_000, 12_000_000)).toBe('+10.0%')
     expect(formatChange(11_400_000, 12_000_000)).toBe('-5.0%')
     expect(formatChange(12_000_000, 12_000_000)).toBe('0.0%')
+  })
+})
+
+describe('formatPercent', () => {
+  it('signs both directions and leaves zero bare', () => {
+    expect(formatPercent(63.6)).toBe('+63.6%')
+    expect(formatPercent(-12.3)).toBe('-12.3%')
+    expect(formatPercent(0)).toBe('0.0%')
+  })
+})
+
+describe('formatCompactMoney', () => {
+  it('shortens to one decimal, in the currency minor unit', () => {
+    expect(formatCompactMoney(123_456_700, usd)).toBe('$1.2M')
+    expect(formatCompactMoney(1_234_567, { base_currency: 'JPY', minor_unit: 0 })).toBe('¥1.2M')
   })
 })

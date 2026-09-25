@@ -22,7 +22,7 @@ This plan answers the spec's questions about how the org pays people, in the API
 - **Cohorts and outliers share one set of percentiles.** One `cohort_stats` CTE in `Analytics::CohortStats` computes p25, p50 and p75 per level and country. Cohorts read it, outliers join back to it. Distribution computes its own percentiles the same way. Rails' `.with` builds the CTE.
 - **The cohort is computed before any filter.** A department filter on outliers narrows who is listed, not who the fence is computed from. Filtering first would move the fence with the view, and the same person would be an outlier in one screen and not another.
 - **Reports are not collections.** Analytics responses are `{ as_of, data, totals }`, or `{ as_of, data, pagination }` where they page. `as_of` is echoed like everywhere else.
-- **No chart library.** Every chart here is one series: bars in a table, a range strip per row, and a twelve point line. Each is a few lines of inline SVG. Recharts would be a dependency for one line chart. One series also means the categorical palette `02` flagged is still not needed: every chart uses `--chart-1`.
+- **One chart library, for one chart.** Every chart here is one series: bars in a table, a range strip per row, and a twelve point line. The bars and strips are plain elements. The line is shadcn's `chart` on Recharts, for its axes and tooltip. One series also means the categorical palette `02` flagged is still not needed: every chart uses `--chart-1`. The cohort grid marks cells with outliers in `--chart-2`.
 
 ---
 
@@ -177,20 +177,20 @@ Routes, under the app layout, with `as_of` retained like everywhere else:
 
 ```
 /analytics                  ?basis &group_by
-/analytics/distribution     ?basis &group_by &department &country &level &title &sort &page
+/analytics/distribution     ?group_by &department &country &level &title &sort &page
 /analytics/outliers         ?department &country &level &direction &page &tab
 /settings/countries
 ```
 
-`basis` is `gross` or `loaded`, default `loaded`, because cost comparisons across countries are the reason the multiplier exists. It is in the URL so a shared link shows the same number. The header gains Analytics and Settings links.
+`basis` is `gross` or `loaded`, default `loaded`, because cost comparisons across countries are the reason the multiplier exists. It is in the URL so a shared link shows the same number. The header gains Analytics and Settings links. Analytics is the home: `/`, sign in and the logo all go to `/analytics`.
 
-Files follow `02`: `src/pages/routegen/analytics/index.page.tsx`, `analytics/distribution/index.page.tsx`, `analytics/outliers/index.page.tsx`, `settings/countries/index.page.tsx`, each with its `data.ts`. The basis toggle and the range strip are shared by the analytics pages, so they sit at `routegen/analytics/`.
+Files follow `02`: `src/pages/routegen/analytics/index.page.tsx`, `analytics/distribution/index.page.tsx`, `analytics/outliers/index.page.tsx`, `settings/countries/index.page.tsx`. One `analytics/data.ts` and `analytics/search.ts` serve the three analytics pages. The header, group toggle and labels they share sit at `routegen/analytics/`. Countries has its own `data.ts`.
 
 ### Overview
 
-- A stat row: active headcount, run rate, and the salaried gap when there is one: "3 active employees have no salary on file". The list has no filter for that yet, so the gap is a number, not a link.
+- A stat row: active headcount, run rate, and the salaried gap when there is one: "No salary on file: 3 active employees". The list has no filter for that yet, so the gap is a number, not a link.
 - Run rate by department, country or level: a table with a bar per row, headcount, and the amount. Groups with nobody active show as zero. Each row links to `/employees` filtered to that group and `status=active`, which is how the manager goes from "Engineering costs the most" to who is in it.
-- Twelve months: one line for run rate on the chosen basis, and headcount, hires, exits and raises per month in a table under it. The line is inline SVG with a tooltip per point.
+- Twelve months: one line for run rate on the chosen basis, and headcount, hires, exits and raises per month in a table under it. The line is a shadcn chart with a tooltip per point.
 - Every loaded figure carries "at current employer cost rates".
 
 ### Distribution

@@ -4,6 +4,12 @@ import { ErrorPanel } from '@/components/error-panel'
 import { AsOfPicker } from '@/components/layout/as-of-picker'
 import { UserMenu } from '@/components/layout/user-menu'
 
+const NAV = [
+  { to: '/analytics', label: 'Analytics' },
+  { to: '/employees', label: 'Employees' },
+  { to: '/settings/countries', label: 'Settings' },
+] as const
+
 // The session can end under a mounted page: a sign out, a refused refresh, or a sign out in another tab.
 export function AppLayout() {
   const signedIn = useSession((session) => session.refreshToken !== null)
@@ -17,19 +23,23 @@ export function AppLayout() {
     <div className="min-h-svh">
       <header className="sticky top-0 z-40 border-b bg-background">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6">
-          <Link to="/employees" className="flex items-center gap-2 font-heading text-sm font-semibold">
+          <Link to="/analytics" className="flex items-center gap-2 font-heading text-sm font-semibold">
             <img src="/favicon.svg" alt="" className="size-6" />
             <span className="hidden sm:inline">Salary management</span>
           </Link>
           <nav className="flex items-center gap-1 text-sm">
-            <Link
-              to="/employees"
-              className="rounded-md px-2 py-1 transition-colors hover:text-foreground"
-              activeProps={{ className: 'font-medium text-foreground' }}
-              inactiveProps={{ className: 'text-muted-foreground' }}
-            >
-              Employees
-            </Link>
+            {NAV.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                activeOptions={{ includeSearch: false }}
+                className="rounded-md px-2 py-1 transition-colors hover:text-foreground"
+                activeProps={{ className: 'font-medium text-foreground' }}
+                inactiveProps={{ className: 'text-muted-foreground' }}
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <AsOfPicker />

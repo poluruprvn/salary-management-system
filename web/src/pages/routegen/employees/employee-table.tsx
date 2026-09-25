@@ -1,23 +1,15 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
 import type { Employee, EmployeeSort } from '@/api/types'
-import { Button } from '@/components/ui/button'
+import { SortableHead } from '@/components/sortable-head'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMeta } from '@/data/app'
 import { formatDate } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
-import { cn } from '@/lib/utils'
-import type { SORT_KEYS } from '@/pages/routegen/employees/search'
 import { StatusBadge } from '@/pages/routegen/employees/status-badge'
 
-type SortKey = (typeof SORT_KEYS)[number]
-
 const COLUMN_COUNT = 9
-
-const SORT_ICONS = { ascending: ArrowUpIcon, descending: ArrowDownIcon, none: ChevronsUpDownIcon }
 
 type EmployeeTableProps = {
   employees: Employee[] | undefined
@@ -119,38 +111,4 @@ export function EmployeeTable({ employees, perPage, sort, onSort }: EmployeeTabl
       </TableBody>
     </Table>
   )
-}
-
-type SortableHeadProps = {
-  sortKey: SortKey
-  sort: EmployeeSort
-  onSort: (sort: EmployeeSort) => void
-  align?: 'right'
-  children: ReactNode
-}
-
-function SortableHead({ sortKey, sort, onSort, align, children }: SortableHeadProps) {
-  const direction = sortDirection(sort, sortKey)
-  const Icon = SORT_ICONS[direction]
-
-  return (
-    <TableHead aria-sort={direction} className={cn(align === 'right' && 'text-right')}>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn('-mx-2 h-7 px-2 font-medium', align === 'right' && 'flex-row-reverse')}
-        onClick={() => onSort(direction === 'ascending' ? `-${sortKey}` : sortKey)}
-      >
-        {children}
-        <Icon className={cn(direction === 'none' && 'text-muted-foreground/60')} />
-      </Button>
-    </TableHead>
-  )
-}
-
-function sortDirection(sort: EmployeeSort, key: SortKey): 'ascending' | 'descending' | 'none' {
-  if (sort === key) return 'ascending'
-  if (sort === `-${key}`) return 'descending'
-
-  return 'none'
 }
