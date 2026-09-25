@@ -313,25 +313,30 @@ One consequence to know. Liveness now fails whenever Postgres does, and under an
 
 ## Phase 7: Seeds
 
-`db/seeds.rb`, deterministic via a fixed `Random` seed, idempotent via `insert_all` with `unique_by`, wrapped in `Audited.auditing_enabled = false`. `insert_all` runs no validations, so the seed builds `reason` from `SalaryRevision::REASONS` and dates inside the employment window itself. Same for the deferred importer's `upsert_all`. Deterministic covers the field values, not the ids: a UUID comes from the database and differs between machines, so nothing may key on a seeded id.
+`db/seeds.rb`, deterministic via fixed `Random` seeds, idempotent via `insert_all` with `unique_by`. `insert_all` runs no callbacks, so it writes no audits. It runs no validations either, so the seed builds `reason` from `SalaryRevision::REASONS` and dates inside the employment window itself. Same for the deferred importer's `upsert_all`. Deterministic covers the field values, not the ids: a UUID comes from the database and differs between machines, so nothing may key on a seeded id. Dates are the exception: they count from the day the seed runs.
 
-**First line: `return` unless the environment is development or test.** `bin/docker-entrypoint` runs `db:prepare` before the server, and that seeds whenever it creates a database. So the first production boot against an empty database runs this file and dies on `NameError`, because Faker is not in the production bundle. Bundling Faker would be worse: 10,000 invented employees in production.
+**First line: `return` unless the environment is development or test.** `bin/docker-entrypoint` runs `db:prepare` before the server, and that seeds an empty database. So the first production boot runs this file and dies on `NameError`, because production does not load Faker. Loading Faker would be worse: 10,000 invented employees in production.
 
-It has to be `return`, not `abort`. `abort` raises `SystemExit`, `db:prepare` fails with it, and `bin/docker-entrypoint` runs under `bash -e`, so the container never reaches `exec` and the first deploy fails. The second boot would succeed, because `prepare_all` seeds only when it creates the database, but a deploy that has to fail once is not worth shipping. Top-level `return` in a `load`ed file is valid Ruby and simply skips the rest.
+It has to be `return`, not `abort`. `abort` raises `SystemExit`, `db:prepare` fails with it, and `bin/docker-entrypoint` runs under `bash -e`, so the container never reaches `exec` and the first deploy fails. The second boot would succeed, because the first already loaded the schema and `prepare_all` seeds only an empty database, but a deploy that has to fail once is not worth shipping. Top-level `return` in a `load`ed file is valid Ruby and simply skips the rest.
 
-- One HR user from `SEED_HR_EMAIL` / `SEED_HR_PASSWORD` via `find_or_create_by!`, so `has_secure_password` hashes it. Read both with a default, not a bare `ENV.fetch`: `.env` is gitignored, so an existing checkout will not have the new keys and `bin/ci` now runs the seeds.
+- One HR user from `SEED_HR_EMAIL` / `SEED_HR_PASSWORD` via `find_or_create_by!`, so `has_secure_password` hashes it. Read both with a default, not a bare `ENV.fetch`: `.env` is gitignored, so an existing checkout will not have the new keys and `bin/ci` now runs the seeds. Production gets no HR user, because the guard returns first. The README says how to create one by hand.
 - About 9 countries with real multipliers, 9 departments, 7 levels.
-- `ENV.fetch("SEED_EMPLOYEE_COUNT", 10_000)` employees in batches of 2,000, with explicit timestamps because `insert_all` skips them.
-- Roughly 35,000 salary revisions: one at hire plus zero to four raises at 12 to 18 month intervals, scaled by level and country.
+- `ENV.fetch("SEED_EMPLOYEE_COUNT", 10_000)` employees in batches of 2,000. No explicit timestamps: since Rails 7, `insert_all` fills `created_at` and `updated_at` itself.
+- Roughly 35,000 salary revisions: one at hire plus zero to four raises at 12 to 18 month intervals, scaled by level and country. No reason names a hire, so the first revision is `market_adjustment` with the note `Starting salary`.
 - About 8% carry an exit date, 1% a future hire date so `pending` is demonstrable, 3% a future-dated raise so moving `as_of` visibly changes the answer.
 
 Employees upsert on `email`, which is the only unique human-typed column left now that `employee_number` is gone. Revisions upsert on the partial index, which Rails handles: `InsertAll#conflict_target` appends a partial index's `WHERE` to the conflict target.
 
-One trap, replacing the `bigserial` one that UUIDs remove. Build the employee id map from a single `Employee.pluck(:email, :id)` after the insert, never from `returning:`. `unique_by` makes the insert `ON CONFLICT DO NOTHING`, so `returning:` yields only the rows that were actually written. On the second run that is none, the map comes back empty, and every salary revision then fails its foreign key.
+Build the employee id map from `returning:`, and write revisions only for the employees in it. `unique_by` makes the insert `ON CONFLICT DO NOTHING`, so `returning:` yields only the rows this run wrote. A rerun therefore adds missing employees with their histories and never writes to an existing one. Writing to existing employees would undo HR's edits: a voided seeded revision would come back live, because the partial index skips voided rows, and a revision could land outside dates HR has since changed. It also means a rerun on a later day, which computes other dates, changes nothing. The cost: a change to the seed never reaches existing employees. `bin/setup --reset` does.
+
+Two more traps.
+
+- **A rerun after the seed changes.** One shared `Random` stream ties each employee to every draw before it, so a later plan that adds bonuses would rename everyone after the first employee, and the rerun would insert them all again. Each employee gets its own `Random`, seeded by its position. A change to anything drawn before the name, or a Faker upgrade, still renames employees, so reset after one.
+- **Two people with one name.** Faker repeats names. `ON CONFLICT DO NOTHING` keeps the first of two rows with one email, in one statement or across batches, and drops the other without an error. So emails are made unique before the insert, with a counter: `ada.lovelace2@example.com`.
 
 `.env.example` gains `SEED_HR_EMAIL`, `SEED_HR_PASSWORD`, `SEED_EMPLOYEE_COUNT`, `BASE_CURRENCY=USD`.
 
-**Verify:** run `bin/rails db:seed` twice and assert identical row counts, salary revisions included, which is the assertion that catches an empty id map. The seed spec covers the guard by stubbing `Rails.env` and asserting the file writes nothing.
+**Verify:** run `bin/rails db:seed` twice and assert identical row counts, salary revisions included. The seed spec covers the guard by stubbing `Rails.env` and asserting the file neither writes nor raises. RSpec lets `SystemExit` through, so an `exit` there would end the run with no failure. It also reruns 45 days later with `travel`, after voiding a seeded revision, with two names that share an email handle, and with a draw added after the name. The validity checks seed 300 employees, because the first 50 hold no pending hire.
 
 ---
 

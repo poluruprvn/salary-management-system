@@ -19,6 +19,8 @@ bin/setup --skip-server              # bundle install + db:prepare
 
 `bin/setup` without `--skip-server` runs the setup steps and then execs the server, so it never returns. Use `--reset` to drop and recreate the database.
 
+`db:prepare` seeds an empty database: one HR account, `hr@example.com` with password `password`, and 10,000 employees with salary histories. `bin/rails db:seed` adds only the employees that are missing and never writes to an existing one. A change to the seed or a Faker upgrade can rename employees, and a re-run adds them as new people, so run `bin/setup --reset` after one. The seed does nothing outside development and test.
+
 Gems install into `vendor/bundle`. Run Ruby tools through `bundle exec` or the `bin/` binstubs.
 
 Frontend:
@@ -72,6 +74,8 @@ Backend configuration comes from `.env`, loaded by dotenv and gitignored:
 | `DATABASE_NAME`, `TEST_DATABASE_NAME` | Development and test databases |
 | `CORS_ORIGINS` | Comma-separated allowed origins, defaults to `http://localhost:5173` |
 | `BASE_CURRENCY` | Currency code `GET /api/v1/meta` reports, defaults to `USD` |
+| `SEED_HR_EMAIL`, `SEED_HR_PASSWORD` | The HR account the seed creates, defaults to `hr@example.com` and `password` |
+| `SEED_EMPLOYEE_COUNT` | Employees the seed writes, defaults to 10,000 |
 
 `RAILS_MAX_THREADS`, `PORT`, and `RAILS_LOG_LEVEL` are read from the environment too. They are not in `.env.example`.
 
@@ -98,5 +102,7 @@ docker run -d -p 80:3000 --name sms \
 ```
 
 The database variables are required. The entrypoint runs `db:prepare` before booting the server, and `config/database.yml` has no fallbacks. Without them the container exits immediately. It also needs a network route to Postgres. The Compose database is not reachable from a default-bridge container. Production ignores `DATABASE_NAME` and always uses `sms_production`.
+
+The seed does nothing in production, so the first boot has no HR account. Create one in `docker exec -it sms bin/rails console` with `User.create!(name: ..., email: ..., password: ...)`.
 
 Production forces SSL and logs to STDOUT.

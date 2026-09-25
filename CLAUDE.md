@@ -25,6 +25,8 @@ Frontend (`web/`):
 
 Gems install to `vendor/bundle`, set by the committed `.bundle/config`. Use `bundle exec` or the `bin/` binstubs. Building the `pg` gem needs `libpq-dev` and `build-essential` on the host, or the distro equivalent.
 
+`db/seeds.rb` creates the HR account in development and test: `hr@example.com` / `password`, unless `SEED_HR_EMAIL` and `SEED_HR_PASSWORD` say otherwise. A re-run adds only missing employees and never writes to an existing one.
+
 ## Testing
 
 `.rspec` requires only `spec_helper`. Every spec file must `require 'rails_helper'` itself, or Rails will not load. The test database is a separate database (`TEST_DATABASE_NAME`), not a schema. `factory_bot_rails` is available. `spec/factories/` and `spec/models/` have one file per model.
