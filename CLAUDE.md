@@ -16,7 +16,7 @@ Backend (repo root):
 - `bundle exec annotaterb models`: rewrite the schema annotations on models, specs and factories. Runs automatically after `db:migrate` in development.
 
 Frontend (`web/`):
-- `npm run dev` (port 5173), `npm run build` (`tsc -b && vite build`), `npm run lint` (oxlint).
+- `npm run dev` (port 5173), `npm run build` (`tsc -b && vite build`), `npm run lint` (oxlint), `npm run knip` (unused files, exports and dependencies).
 - No test runner and no formatter are installed.
 
 ## Setup

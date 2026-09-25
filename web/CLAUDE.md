@@ -30,11 +30,11 @@ Tailwind v4, configured entirely in `src/index.css`. There is no `tailwind.confi
 
 Add components with `npx shadcn@latest add <name>`. `components.json` writes them to `src/components/ui` in the `radix-nova` style. Import via the `@/` alias.
 
-Generated components import `cn` from `@/lib/utils`, which re-exports it from the `cn` package. Do not swap that for a hand-written clsx + tailwind-merge helper.
+Generated components import `cn` from the `cn` package. Hand-written code imports it from `@/lib/utils`, which re-exports it. Do not swap either for a hand-written clsx + tailwind-merge helper.
 
 ## Conventions
 
-Single quotes, no semicolons, 2-space indent. There is no formatter, so match the surrounding file. `src/lib/utils.ts` uses double quotes; it is the outlier.
+Single quotes, no semicolons, 2-space indent. There is no formatter, so match the surrounding file. `src/lib/utils.ts` and the generated `src/components/ui/*` use double quotes. They are the outliers.
 
 Never write complex prose. In docs, comments, commit messages, and PR descriptions: short sentences, plain words, one idea each. No hedging, no filler, no rhetorical flourish. No em dashes; use a colon, a comma, or a full stop.
 
