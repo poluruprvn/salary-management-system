@@ -1,10 +1,11 @@
 module Employee::Analytics
   extend ActiveSupport::Concern
 
+  # The grouping sets are spelled out, not interpolated, so brakeman sees a literal.
   GROUP_KEYS = {
-    "department" => "employees.department_id",
-    "country" => "employees.country_id",
-    "level" => "employees.level_id"
+    "department" => { column: "employees.department_id", grouping_sets: "GROUPING SETS ((employees.department_id), ())" },
+    "country" => { column: "employees.country_id", grouping_sets: "GROUPING SETS ((employees.country_id), ())" },
+    "level" => { column: "employees.level_id", grouping_sets: "GROUPING SETS ((employees.level_id), ())" }
   }.freeze
 
   # Grouped on the joined table's primary key, or on the title itself, so the name and sort
@@ -34,21 +35,17 @@ module Employee::Analytics
   ].freeze
 
   class_methods do
-    def group_column(key)
-      closed_group(GROUP_KEYS, key)
-    end
-
     # One row per group plus the total row, from one scan, so the total always foots. Loaded rounds
     # per employee before the sum, so a group is the sum of its rows.
     def run_rate(as_of:, group_by:)
-      column = group_column(group_by)
+      key = closed_group(GROUP_KEYS, group_by)
 
       active_as_of(as_of)
         .joins(:country)
         .joins(sanitize_sql_array([ Employee::SALARY_AS_OF_JOIN, { as_of: as_of } ]))
-        .group("GROUPING SETS ((#{column}), ())")
-        .select("#{column} AS group_id",
-                "GROUPING(#{column}) = 1 AS is_total",
+        .group(key[:grouping_sets])
+        .select("#{key[:column]} AS group_id",
+                "GROUPING(#{key[:column]}) = 1 AS is_total",
                 *RUN_RATE_AMOUNTS)
         .order("is_total", "loaded_cents DESC", "group_id")
     end
