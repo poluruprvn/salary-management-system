@@ -12,7 +12,7 @@ This is an assignment, so production is a demo and needs the demo data. `db/seed
 - **One hostname, split by path.** Both apps set `host: <domain>`. The API adds `path_prefix: /api` and `strip_path_prefix: false`, since its routes already start with `/api`. kamal-proxy sends `/api/*` to Rails and everything else to the SPA. The browser sees one origin, so no CORS preflight and one certificate.
 - **kamal-proxy splits the paths, not Caddy.** Caddy has no stable name to proxy `/api` to. Kamal names the API container `sms-web-<version>` (service `sms`, role `web`, version) and gives it no network alias, so the upstream changes on every deploy. Going around kamal-proxy would also lose its gapless rollout for the API.
 - **Postgres is a Kamal accessory on the same host.** `postgres:18-alpine`, as in `compose.yaml`, because the schema calls `uuidv7()`, its data in the host directory `~/sms-db/data`, and no public port. Rails reaches it as `sms-db` over the `kamal` Docker network. A managed database costs more than the server it would serve.
-- **TLS ends at kamal-proxy.** Production already sets `assume_ssl` and `force_ssl`, so Rails treats proxied requests as HTTPS. The proxy's health check reaches `/healthz` without being redirected.
+- **TLS ends at kamal-proxy.** On a shared host, kamal-proxy takes TLS from the root path app, so only the SPA sets `ssl: true`. Deploy the SPA first. Production already sets `assume_ssl` and `force_ssl`, so Rails treats proxied requests as HTTPS. The proxy's health check reaches `/healthz` without being redirected.
 - **The SPA gets its API URL at build time.** Vite bakes `VITE_API_URL` into the bundle, so it goes in as a build arg, not a runtime env var. Changing the API host means rebuilding the SPA.
 - **Caddy serves only the SPA.** One `Caddyfile`: serve `dist/`, fall back to `index.html` for client-side routes, and cache the hashed files under `/assets` for a long time. Everything else is `no-cache`, and a missing asset is a 404, so a stale `index.html` never pins the app to deleted assets. kamal-proxy already handles TLS, so Caddy listens on plain `:80`.
 - **Production runs the full seed.** The `Rails.env.local?` guard goes, and `faker` moves to the default Gemfile group. `db:prepare` seeds an empty database on first boot: 10,000 employees took 9 seconds to healthy in a local container, and `deploy_timeout: 60` leaves room on a small box.
@@ -46,6 +46,8 @@ This is an assignment, so production is a demo and needs the demo data. `db/seed
 ---
 
 ## Phase 3: API on Kamal
+
+Run this after Phase 4 on a fresh server: the API's `/api` route needs the SPA's root route to exist for TLS.
 
 `Gemfile`, `config/deploy.yml`, `.kamal/secrets`.
 

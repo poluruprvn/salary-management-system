@@ -6,8 +6,9 @@ servers:
     - <%= ENV.fetch("KAMAL_SERVER_IP") %>
 
 # The SPA (web/config/deploy.yml) serves the same host. kamal-proxy sends /api here and the rest there.
+# kamal-proxy takes TLS for a shared host from the root path app, so the SPA sets ssl and this app must not.
 proxy:
-  ssl: true
+  ssl: false
   host: <%= ENV.fetch("KAMAL_HOST") %>
   path_prefix: /api
   strip_path_prefix: false
