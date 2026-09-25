@@ -37,7 +37,7 @@ RSpec.describe "Employees" do
       parameter name: :status, in: :query, required: false, getter: :status_filter,
                 schema: { type: :string, enum: Employee::STATUSES }, description: "As of as_of"
       parameter name: :sort, in: :query, required: false,
-                schema: { type: :string, enum: Employee::SORT_KEYS.keys.flat_map { |key| [ key, "-#{key}" ] }, default: "name" },
+                schema: { type: :string, enum: Employees::List::SORT_KEYS.keys.flat_map { |key| [ key, "-#{key}" ] }, default: "name" },
                 description: "A leading - sorts descending. salary and exit_date put nulls last either way."
       parameter as_of_parameter
       parameter name: :page, in: :query, required: false, schema: { type: :integer, minimum: 1, default: 1 }

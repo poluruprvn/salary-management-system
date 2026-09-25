@@ -11,7 +11,7 @@ This plan answers the spec's questions about how the org pays people, in the API
 ## Decisions
 
 - **Every answer is a read over the salary lateral.** `Employee::SALARY_AS_OF_JOIN` is the one definition of salary in force, and analytics composes on it rather than restating it. A second copy of that SQL drifts, and the day it drifts the dashboard disagrees with the list.
-- **Reads stay scopes.** There is still no `app/queries/`. The analytics scopes live in `app/models/employee/analytics.rb`, a concern included in `Employee`, so `employee.rb` does not double in size. Each returns a relation. Controllers render it.
+- **Each answer is a query class.** They live in `app/queries/analytics/`, one per answer, so `Employee` does not grow a report for every question. Each returns a relation. Controllers render it.
 - **The population is active employees with a salary in force on `as_of`.** Run rate, distribution and outliers all use it. Headcount counts every active employee, and each answer also reports how many of them have no salary on file. That is how headcount and run rate agree: the gap is shown, not hidden.
 - **Fully loaded rounds per employee.** `ROUND(amount_cents * employer_cost_multiplier)` per row, then `SUM`. `ROUND` on `numeric` is half away from zero, which on a positive amount is half up. A group total is the sum of its rows and the grand total is the sum of the groups, the same rule as the register.
 - **Gross and loaded come back together.** Each answer returns both, and the UI switches between them. A `basis` param would double the requests for a toggle and save one multiply per row.
@@ -19,7 +19,7 @@ This plan answers the spec's questions about how the org pays people, in the API
 - **Percentiles are `percentile_cont`, then rounded to the cent.** `percentile_cont` takes `double precision` only. Amounts under 2^53 cents convert exactly, so the only float step is the interpolation, and the result is rounded once, half up, through `numeric`. A percentile is a statistic, not money that has to foot, so this is the one place a float is accepted.
 - **Grouping is a closed set of keys**, in a frozen hash like `SORT_KEYS`: `department`, `country`, `level`, and `title` for distribution only. An unknown key is an `InvalidParameter`, which is a 422.
 - **One query per answer, totals included.** Run rate groups with `GROUPING SETS ((key), ())`, so the rows and the total come from one scan and cannot disagree. `group` takes the raw string, so no Arel.
-- **Outliers share the distribution's percentiles.** One `cohort_stats` CTE computes p25, p50 and p75 per level and country. Distribution reads it grouped, outliers join back to it. Rails' `.with` builds the CTE.
+- **Cohorts and outliers share one set of percentiles.** One `cohort_stats` CTE in `Analytics::CohortStats` computes p25, p50 and p75 per level and country. Cohorts read it, outliers join back to it. Distribution computes its own percentiles the same way. Rails' `.with` builds the CTE.
 - **The cohort is computed before any filter.** A department filter on outliers narrows who is listed, not who the fence is computed from. Filtering first would move the fence with the view, and the same person would be an outlier in one screen and not another.
 - **Reports are not collections.** Analytics responses are `{ as_of, data, totals }`, or `{ as_of, data, pagination }` where they page. `as_of` is echoed like everywhere else.
 - **No chart library.** Every chart here is one series: bars in a table, a range strip per row, and a twelve point line. Each is a few lines of inline SVG. Recharts would be a dependency for one line chart. One series also means the categorical palette `02` flagged is still not needed: every chart uses `--chart-1`.
@@ -42,7 +42,7 @@ This plan answers the spec's questions about how the org pays people, in the API
 
 ## Phase 2: Run rate
 
-`app/models/employee/analytics.rb`, `app/controllers/api/v1/analytics_controller.rb`.
+`app/queries/analytics/run_rate.rb`, `app/controllers/api/v1/analytics_controller.rb`.
 
 ```
 GET /api/v1/analytics/run_rate?as_of&group_by=department|country|level
@@ -64,12 +64,12 @@ GROUP BY GROUPING SETS ((employees.department_id), ())
 
 - `active_as_of` and the lateral both take the one `as_of` the request resolved.
 - `COUNT(current_salary.amount_cents)` counts the salaried. `headcount - salaried` is the gap the UI shows.
-- Each row carries `group` as `{ id, name }`, looked up from the closed set in the controller. Each is a small table, and a join per key would need its own select list. A group with no active employee does not appear. The UI shows the closed set, so a department with nobody in it reads as zero rather than missing.
+- Each row carries `group` as `{ id, name }`. The name is a subquery on the grouped id, so it needs no `GROUP BY` entry and is null on the total row. A group with no active employee does not appear. The UI shows the closed set, so a department with nobody in it reads as zero rather than missing.
 - Rows are ordered by `loaded_cents DESC`, because "which department costs the most" is the question. The UI can re-sort on the client: at most a few dozen rows.
 - The response is `{ as_of, group_by, data: [ { group, headcount, salaried, gross_cents, loaded_cents } ], totals: { headcount, salaried, gross_cents, loaded_cents } }`.
 - Amounts in `amount_cents` are annual, so the sum is already annualized.
 
-**Verify:** a model spec with hand-computed answers. A future-dated raise is ignored until `as_of` reaches it. A voided revision is ignored. An employee is counted on their exit date and not the day after. A pending hire is not counted. Two employees whose loaded amounts each round up show the per-row rounding. The totals equal the sum of the rows. `totals.headcount` equals the `pagination.total` of `GET /employees?status=active` on the same date.
+**Verify:** a query spec with hand-computed answers. A future-dated raise is ignored until `as_of` reaches it. A voided revision is ignored. An employee is counted on their exit date and not the day after. A pending hire is not counted. Two employees whose loaded amounts each round up show the per-row rounding. The totals equal the sum of the rows. `totals.headcount` equals the `pagination.total` of `GET /employees?status=active` on the same date.
 
 ---
 
@@ -80,7 +80,7 @@ GET /api/v1/analytics/distribution?as_of&group_by=department|country|level|title
     &department_id[]&country_id[]&level_id[]&title&sort&page&per_page
 ```
 
-- The filters are `Employee.filtered`'s id filters and `title`, applied before grouping. "The median for L4 engineers in India" is `group_by=level`, `department_id=<Engineering>`, `country_id=<India>`, and the L4 row. `q` and `status` are refused as 422: status is always active here, and a free text search makes a population nobody can name.
+- The filters are `Employees::List.filter`'s id filters and `title`, applied before grouping. "The median for L4 engineers in India" is `group_by=level`, `department_id=<Engineering>`, `country_id=<India>`, and the L4 row. `q` and `status` are refused as 422: status is always active here, and a free text search makes a population nobody can name.
 - Per group: `headcount`, `min_cents`, `p25_cents`, `median_cents`, `p75_cents`, `max_cents`. `headcount` here is the salaried count, since a percentile has nothing to say about someone with no salary. The response's `unsalaried` total says how many were left out.
 - It pages, because `group_by=title` yields hundreds of rows. `total` is `COUNT(DISTINCT key)` over the same filtered population, passed to `paginate`. The other keys fit on one page and page anyway, so the client has one shape.
 - `sort` is `name`, `headcount` or `median`, with `-` for descending. `name` is the key's natural order: department and country by `lower(name)`, level by `rank`, title by `lower(title)`. The default is `name`, except `title`, which defaults to `-headcount` so the titles most people hold come first. Every sort ends on the group key, for the same reason every employee sort ends on `id`.
@@ -141,6 +141,25 @@ The spec's budget is 300 ms at p95 for list, search and filter, server side, aga
 - No new index is expected. If one is, it is written into this plan with the plan that justified it.
 
 **Verify:** each endpoint under 300 ms at p95. The numbers go into this file, under this phase.
+
+### Results
+
+Measured on 2026-09-25 against 10,001 seeded employees and 33,608 revisions, `as_of` today. Development server, Postgres 18 in compose, twenty requests per row, `Completed` time from the log. `EXPLAIN ANALYZE` is one warm run of the query alone. Its per-node timing is overhead, which is why the trend's query time is above its request time.
+
+| Endpoint | p50 ms | p95 ms | max ms | Query ms |
+| --- | ---: | ---: | ---: | ---: |
+| `run_rate?group_by=department` | 22 | 24 | 35 | 18 |
+| `run_rate?group_by=country` | 21 | 22 | 23 | |
+| `run_rate?group_by=level` | 24 | 27 | 31 | |
+| `distribution?group_by=department` | 35 | 40 | 44 | |
+| `distribution?group_by=level` | 36 | 40 | 42 | |
+| `distribution?group_by=title` | 38 | 44 | 48 | 26 |
+| `cohorts` | 51 | 55 | 56 | 49 |
+| `outliers` | 57 | 64 | 67 | 30 |
+| `outliers?direction=above` | 58 | 65 | 66 | |
+| `trend` | 201 | 228 | 247 | 250 |
+
+Every endpoint is inside the budget, so the trend keeps its thirteen lateral passes. They are 113,000 index probes and nearly all of its time. JIT adds about 28 ms to the trend, and turning it off saved nothing measurable. No index was added. If the trend misses as data grows, the one-scan rewrite above is the fix.
 
 ---
 

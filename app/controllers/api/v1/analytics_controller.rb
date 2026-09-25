@@ -3,14 +3,12 @@ module Api
     class AnalyticsController < BaseController
       def run_rate
         group_by = params[:group_by].presence || "department"
-        rows = Employee.run_rate(as_of: as_of, group_by: group_by).to_a
-        totals, groups = rows.partition(&:is_total)
-        names = Employee.reflect_on_association(group_by).klass.where(id: groups.map(&:group_id)).pluck(:id, :name).to_h
+        totals, groups = Analytics::RunRate.call(as_of: as_of, group_by: group_by).to_a.partition(&:is_total)
 
         render json: {
           as_of: as_of,
           group_by: group_by,
-          data: groups.map { |row| { group: { id: row.group_id, name: names[row.group_id] }, **amounts(row) } },
+          data: groups.map { |row| { group: { id: row.group_id, name: row.group_name }, **amounts(row) } },
           totals: amounts(totals.sole)
         }
       end
@@ -18,8 +16,8 @@ module Api
       def distribution
         group_by = params[:group_by].presence || "department"
         filters = distribution_filters
-        summary = Employee.distribution_summary(as_of: as_of, group_by: group_by, filters: filters)
-        rows = Employee.distribution(as_of: as_of, group_by: group_by, filters: filters, sort: params[:sort])
+        summary = Analytics::Distribution.summary(as_of: as_of, group_by: group_by, filters: filters).take
+        rows = Analytics::Distribution.call(as_of: as_of, group_by: group_by, filters: filters, sort: params[:sort])
         page = paginate(rows, total: summary.groups)
 
         render json: {
@@ -37,14 +35,12 @@ module Api
       def cohorts
         render json: {
           as_of: as_of,
-          data: Employee.cohorts(as_of: as_of).map do |row|
+          data: Analytics::Cohorts.call(as_of: as_of).map do |row|
             {
               level: { id: row.level_id, name: row.level_name },
               country: { id: row.country_id, name: row.country_name },
-              **row.slice(:headcount, :evaluated, :p25_cents, :p50_cents, :p75_cents, :lower_fence_cents, :upper_fence_cents).symbolize_keys,
-              outliers_below: (row.outliers_below if row.evaluated),
-              outliers_above: (row.outliers_above if row.evaluated),
-              reason: unevaluated_reason(row)
+              **row.slice(:headcount, :evaluated, :p25_cents, :p50_cents, :p75_cents, :lower_fence_cents, :upper_fence_cents,
+                          :outliers_below, :outliers_above, :reason).symbolize_keys
             }
           end
         }
@@ -52,7 +48,7 @@ module Api
 
       def outliers
         refuse_filters(:q, :status, :title)
-        rows = Employee.outliers(as_of: as_of, filters: id_filter_params, direction: params[:direction])
+        rows = Analytics::Outliers.call(as_of: as_of, filters: id_filter_params, direction: params[:direction])
         page = paginate(rows)
 
         render json: {
@@ -74,7 +70,7 @@ module Api
       def trend
         render json: {
           as_of: as_of,
-          data: Employee.trend(as_of: as_of).map do |row|
+          data: Analytics::Trend.call(as_of: as_of).map do |row|
             { date: row.date, **amounts(row), **row.slice(:hires, :exits, :raises, :raise_delta_cents).symbolize_keys }
           end
         }
@@ -94,12 +90,6 @@ module Api
           raise InvalidParameter.new(:title, "must be a single value") unless params[:title].nil? || params[:title].is_a?(String)
 
           params.permit(:title).merge(id_filter_params)
-        end
-
-        def unevaluated_reason(row)
-          return if row.evaluated
-
-          row.headcount < Employee::MIN_COHORT ? "fewer than #{Employee::MIN_COHORT} people" : "p25 and p75 are equal"
         end
 
         def amounts(row)

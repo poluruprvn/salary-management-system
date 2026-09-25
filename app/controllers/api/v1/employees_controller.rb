@@ -5,9 +5,9 @@ module Api
       before_action :as_of, only: [ :create, :update ]
 
       def index
-        employees = Employee.filtered(filter_params, as_of: as_of)
+        employees = Employees::List.filter(filter_params, as_of: as_of)
         # The count runs on the filters alone and never pays for the salary join.
-        page = paginate(employees.with_salary_as_of(as_of).sorted_by(params[:sort]).preload(:country, :department, :level),
+        page = paginate(Employees::List.sort(employees.with_salary_as_of(as_of), params[:sort]).preload(:country, :department, :level),
                         total: employees.count)
 
         render json: { data: page.records.map { |employee| serialize(employee) }, pagination: page.metadata }

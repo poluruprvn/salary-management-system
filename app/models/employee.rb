@@ -39,19 +39,6 @@
 class Employee < ApplicationRecord
   STATUSES = %w[pending active exited].freeze
 
-  # lower() because postgres:18-alpine is musl, which collates bytewise and puts every capital
-  # first. level sorts by rank, since as text L10 sorts before L2. exit_date and salary can be
-  # null, and Postgres puts nulls first on DESC.
-  SORT_KEYS = {
-    "name" => { asc: "lower(employees.name) ASC", desc: "lower(employees.name) DESC" },
-    "hire_date" => { asc: "employees.hire_date ASC", desc: "employees.hire_date DESC" },
-    "exit_date" => { asc: "employees.exit_date ASC NULLS LAST", desc: "employees.exit_date DESC NULLS LAST" },
-    "salary" => { asc: "current_salary.amount_cents ASC NULLS LAST", desc: "current_salary.amount_cents DESC NULLS LAST" },
-    "department" => { asc: "lower(departments.name) ASC", desc: "lower(departments.name) DESC", joins: :department },
-    "country" => { asc: "lower(countries.name) ASC", desc: "lower(countries.name) DESC", joins: :country },
-    "level" => { asc: "levels.rank ASC", desc: "levels.rank DESC", joins: :level }
-  }.freeze
-
   # No sr.id tiebreak. The partial unique index allows at most one live row per date, but the
   # planner cannot prove it and would add an Incremental Sort per employee on top of the
   # backward index scan.
@@ -68,8 +55,6 @@ class Employee < ApplicationRecord
       LIMIT 1
     ) current_salary ON TRUE
   SQL
-
-  include Analytics
 
   audited
   has_associated_audits
@@ -102,41 +87,10 @@ class Employee < ApplicationRecord
   scope :pending_as_of, ->(date) { where.not(hire_date: ..date) }
   scope :exited_as_of, ->(date) { where(exit_date: ...date) }
 
-  # Filters only. No join and no order, so the page count never pays for the salary lookup.
-  def self.filtered(filters, as_of:)
-    relation = all
-    relation = relation.search(filters[:q]) if filters[:q].present?
-    relation = relation.where(title: filters[:title]) if filters[:title].present?
-    relation = relation.with_status(filters[:status].to_s, as_of: as_of) if filters[:status].present?
-
-    %i[department_id country_id level_id].each do |key|
-      ids = Array(filters[key]).compact_blank
-      relation = relation.where(key => ids) if ids.any?
-    end
-
-    relation
-  end
-
-  # ILIKE has no operator for uuid, so an id is an exact match instead. Nobody types part of one.
-  def self.search(term)
-    term = term.to_s.squish
-
-    if (id = type_for_attribute(:id).cast(term))
-      where(id: id)
-    else
-      where("employees.name ILIKE :pattern OR employees.email ILIKE :pattern OR employees.title ILIKE :pattern",
-            pattern: "%#{sanitize_sql_like(term)}%")
-    end
-  end
-
-  def self.with_status(status, as_of:)
-    raise InvalidParameter.new(:status, "must be one of #{STATUSES.join(", ")}") unless STATUSES.include?(status)
-
-    public_send("#{status}_as_of", as_of)
-  end
+  scope :joins_salary_as_of, ->(date) { joins(sanitize_sql_array([ SALARY_AS_OF_JOIN, { as_of: date } ])) }
 
   def self.with_salary_as_of(date)
-    joins(sanitize_sql_array([ SALARY_AS_OF_JOIN, { as_of: date } ]))
+    joins_salary_as_of(date)
       .select("employees.*",
               "current_salary.amount_cents AS current_salary_amount_cents",
               "current_salary.effective_date AS current_salary_effective_date")
@@ -150,17 +104,6 @@ class Employee < ApplicationRecord
     return relation if term.empty?
 
     relation.where("employees.title ILIKE ?", "%#{sanitize_sql_like(term)}%")
-  end
-
-  # Sorting by salary reads the lateral, so it needs with_salary_as_of on the same relation.
-  def self.sorted_by(sort)
-    sort = sort.to_s.presence || "name"
-    key = SORT_KEYS.fetch(sort.delete_prefix("-")) { raise UnknownSortKey, sort }
-
-    relation = key[:joins] ? joins(key[:joins]) : all
-    # Every key has ties, so the id tiebreak fixes their order and offset pages never repeat or
-    # skip a row.
-    relation.order(key[sort.start_with?("-") ? :desc : :asc], :id)
   end
 
   def status_as_of(date = Date.current)

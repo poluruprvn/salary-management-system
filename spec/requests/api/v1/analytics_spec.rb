@@ -23,13 +23,13 @@ RSpec.describe "Analytics" do
       produces "application/json"
       description "Active employees on as_of, grouped. A group with nobody active is left out. Rows are costliest first on loaded."
       parameter name: :group_by, in: :query, required: false,
-                schema: { type: :string, enum: Employee::GROUP_KEYS.keys, default: "department" }
+                schema: { type: :string, enum: Analytics::RunRate::GROUPINGS.keys, default: "department" }
       parameter as_of_parameter
 
       response "200", "the run rate" do
         schema type: :object, required: %w[as_of group_by data totals], properties: {
           as_of: { type: :string, format: :date },
-          group_by: { type: :string, enum: Employee::GROUP_KEYS.keys },
+          group_by: { type: :string, enum: Analytics::RunRate::GROUPINGS.keys },
           data: {
             type: :array,
             items: {
@@ -68,7 +68,7 @@ RSpec.describe "Analytics" do
       produces "application/json"
       description "Salaried active employees on as_of, filtered, then grouped. q and status are refused: status is always active here."
       parameter name: :group_by, in: :query, required: false,
-                schema: { type: :string, enum: Employee::DISTRIBUTION_KEYS.keys, default: "department" }
+                schema: { type: :string, enum: Analytics::Distribution::GROUP_KEYS.keys, default: "department" }
       parameter name: "department_id[]", in: :query, required: false, getter: :department_ids,
                 schema: { type: :array, items: { type: :string, format: :uuid } }
       parameter name: "country_id[]", in: :query, required: false, getter: :country_ids,
@@ -87,7 +87,7 @@ RSpec.describe "Analytics" do
       response "200", "a page of groups" do
         schema type: :object, required: %w[as_of group_by data unsalaried pagination], properties: {
           as_of: { type: :string, format: :date },
-          group_by: { type: :string, enum: Employee::DISTRIBUTION_KEYS.keys },
+          group_by: { type: :string, enum: Analytics::Distribution::GROUP_KEYS.keys },
           data: {
             type: :array,
             items: {
@@ -147,7 +147,7 @@ RSpec.describe "Analytics" do
       tags "Analytics"
       produces "application/json"
       description "Every level and country pair with a salaried active employee on as_of, by level rank then country name. " \
-                  "A cohort under #{Employee::MIN_COHORT} is listed but not evaluated. Not paged."
+                  "A cohort under #{Analytics::CohortStats::MIN_COHORT} is listed but not evaluated. Not paged."
       parameter as_of_parameter
 
       response "200", "the cohorts" do
@@ -164,7 +164,7 @@ RSpec.describe "Analytics" do
                 level: named,
                 country: named,
                 headcount: { type: :integer, description: "Salaried active employees in the cohort" },
-                evaluated: { type: :boolean, description: "False under #{Employee::MIN_COHORT} people" },
+                evaluated: { type: :boolean, description: "False under #{Analytics::CohortStats::MIN_COHORT} people" },
                 p25_cents: cents.merge(description: "Interpolated, rounded half up to the cent"),
                 p50_cents: cents.merge(description: "The median. Interpolated, rounded half up to the cent"),
                 p75_cents: cents.merge(description: "Interpolated, rounded half up to the cent"),
@@ -200,7 +200,7 @@ RSpec.describe "Analytics" do
       description "Evaluated cohorts only, farthest from the median first. The filters narrow who is listed. " \
                   "The fence is always computed from the whole level and country. q, status and title are refused."
       id_filters.each { |filter| parameter filter }
-      parameter name: :direction, in: :query, required: false, schema: { type: :string, enum: Employee::OUTSIDE_FENCE.keys },
+      parameter name: :direction, in: :query, required: false, schema: { type: :string, enum: Analytics::CohortStats::OUTSIDE_FENCE.keys },
                 description: "Both when omitted"
       parameter as_of_parameter
       parameter name: :page, in: :query, required: false, schema: { type: :integer, minimum: 1, default: 1 }
@@ -224,7 +224,7 @@ RSpec.describe "Analytics" do
                 amount_cents: cents.merge(description: "Annual salary in force on as_of"),
                 cohort_median_cents: cents.merge(description: "Rounded half up to the cent"),
                 cohort_headcount: { type: :integer },
-                direction: { type: :string, enum: Employee::OUTSIDE_FENCE.keys },
+                direction: { type: :string, enum: Analytics::CohortStats::OUTSIDE_FENCE.keys },
                 distance_pct: { type: :number, description: "(amount - median) / median * 100, one decimal, negative below" }
               }
             }
@@ -477,7 +477,7 @@ RSpec.describe "Analytics" do
       body = response.parsed_body
 
       expect(body["as_of"]).to eq("2024-06-15")
-      expect(body["data"].pluck("date")).to eq(Employee.trend_dates(Date.new(2024, 6, 15)).map(&:iso8601))
+      expect(body["data"].pluck("date")).to eq(Analytics::Trend.dates(Date.new(2024, 6, 15)).map(&:iso8601))
       expect(body["data"].first).to include("headcount" => 0, "hires" => nil, "raise_delta_cents" => nil)
       expect(body["data"][-2]).to eq(
         "date" => "2024-05-31", "headcount" => 1, "salaried" => 1, "gross_cents" => 10_000_000, "loaded_cents" => 12_000_000,

@@ -15,8 +15,8 @@ This plan is the backend only: sign in, employees, and salary revision history. 
 - **Salary in force is a lateral join**, not a `current_salary_cents` column. A stored column cannot answer "as of a date", and moving `as_of` forward is how the spec previews approved raises.
 - **Access is a JWT, refresh is a row.** Short lived HS256 access token, checked by signature and never looked up. The refresh token is opaque random stored as a SHA-256 digest, deleted on sign out. bcrypt guards the password only.
 - **No access token blacklist.** Sign out ends a session within one access token lifetime, not instantly. A denylist would put a database read back on every request.
-- **Pagination is a generic concern**, offset based, over a JSON envelope with `Link` and `X-Total-Count` kept alongside it. `Pagination#paginate` knows nothing about the resource and owns the slice: no scope calls `limit` or `offset`. Employees is the only caller today. Cursor pagination is out of scope: at 10,000 rows the deepest offset is a few hundred pages, and a cursor costs an opaque token per sort key and takes away jumping to a page.
-- **No query layer, but a service layer.** Reads are scopes on the model, composed at the call site. Writes are one class per operation in `app/services/`, owning the transaction and raising on failure. An `app/queries/` object would hold what a scope holds anyway, while a write with rules in the controller has nowhere to go when the importer and the register need the same rules.
+- **Pagination is a generic concern**, offset based, over a JSON envelope with `Link` and `X-Total-Count` kept alongside it. `Pagination#paginate` knows nothing about the resource and owns the slice: no scope or query calls `limit` or `offset`. Employees is the only caller today. Cursor pagination is out of scope: at 10,000 rows the deepest offset is a few hundred pages, and a cursor costs an opaque token per sort key and takes away jumping to a page.
+- **Queries and services.** Small composable reads are scopes on the model. A read with its own params and rules is a class in `app/queries/`, so the model holds the domain and not every report on it. Writes are one class per operation in `app/services/`, owning the transaction and raising on failure. A write with rules in the controller has nowhere to go when the importer and the register need the same rules.
 - **Serialization is plain POROs** in `app/serializers`.
 - **Auditing is the `audited` gem**, not hand-rolled. It writes inside the save transaction, already skips empty changesets, and its railtie wires the actor sweeper into `ActionController::API`.
 - **The API contract is generated, not written.** rswag turns the request specs into OpenAPI 3, served with Swagger UI at `/api-docs`. A hand-written document drifts from the API on day one.
@@ -148,7 +148,7 @@ The envelope is canonical. `prev_page` and `next_page` are null at the ends, so 
 - `total:` is for callers with a cheaper count than `relation.count(:all)`, which employees has: the filtered relation skips the lateral. It defaults to `relation.count(:all)`, so a plain resource calls `paginate(Country.all)` and is done. `:all` counts rows. A bare `count` puts a custom select list inside `COUNT()`, which is invalid SQL.
 - `Link` is built by rewriting the `page` param on `request.url`, so every filter, `sort` and `as_of` survives into the links and no resource knowledge leaks into the concern.
 - A page past the end is an empty `data` with correct metadata, not a 404.
-- `paginate` is the only place `limit` and `offset` are applied. Phase 5's scopes hand it an unsliced relation and never page themselves.
+- `paginate` is the only place `limit` and `offset` are applied. Phase 5's scopes and queries hand it an unsliced relation and never page themselves.
 
 `sessions_controller.rb` holds no auth logic. Each action calls `Auth::SignIn`, `Auth::Refresh` or `Auth::SignOut`, following Phase 5's service rules. `AccessToken` is not one of those: it is a value object that encodes and decodes, and the services call it.
 
@@ -167,30 +167,30 @@ Access tokens live 15 minutes, refresh tokens 30 days. Sign out deletes every re
 
 ---
 
-## Phase 5: Scopes and services
+## Phase 5: Queries and services
 
-There is no `app/queries/`. Reads are scopes on the Phase 2 models, writes are services in `app/services/`, and Phase 6's controllers permit params, call one of the two, and serialize what comes back. A scope returns a relation and never executes. A service owns a transaction and returns a record.
+Reads are scopes on the Phase 2 models and query classes in `app/queries/`. Writes are services in `app/services/`. Phase 6's controllers permit params, call one of them, and serialize what comes back. A scope or a query returns a relation and never executes. A service owns a transaction and returns a record.
 
 ### Reads
 
-Three scopes on `Employee`, added to the file Phase 2 created.
+`with_salary_as_of(date)` is a scope on `Employee`. The list's filters and sorts are `Employees::List`, in `app/queries/employees/list.rb`.
 
-`filtered(filters, as_of:)` handles `q`, `department_id[]`, `country_id[]`, `level_id[]`, `title` and `status`. `status` is checked against `Employee::STATUSES`, which is also what `GET /meta` publishes: an unchecked filter naming a status `status_as_of` cannot return is an empty page and no error. Filters only: no lateral, no order. `q` matches `name`, `email` and `title` with `ILIKE`. A `q` that parses as a UUID is an equality match on `id` instead, per Phase 1.
+`Employees::List.filter(filters, as_of:)` handles `q`, `department_id[]`, `country_id[]`, `level_id[]`, `title` and `status`. `status` is checked against `Employee::STATUSES`, which is also what `GET /meta` publishes: an unchecked filter naming a status `status_as_of` cannot return is an empty page and no error. Filters only: no lateral, no order. `q` matches `name`, `email` and `title` with `ILIKE`. A `q` that parses as a UUID is an equality match on `id` instead, per Phase 1.
 
-`with_salary_as_of(date)` adds the lateral. `sorted_by(key)` adds the order and whatever join the key needs.
+`with_salary_as_of(date)` adds the lateral. `Employees::List.sort(relation, key)` adds the order and whatever join the key needs.
 
 The controller composes them:
 
 ```ruby
-base = Employee.filtered(filter_params, as_of: as_of)
-paginate(base.with_salary_as_of(as_of).sorted_by(sort_param), total: base.count)
+base = Employees::List.filter(filter_params, as_of: as_of)
+paginate(Employees::List.sort(base.with_salary_as_of(as_of), sort_param), total: base.count)
 ```
 
-That composition is the argument against a query object here. `COUNT` runs on the filter relation and never pays for the salary lookup. A `#count_relation` and a `#page_relation` say the same thing, but the call site shows neither, so the two can drift apart and nothing looks wrong. Here they are one variable.
+`COUNT` runs on the filter relation and never pays for the salary lookup. The count and the page share one variable, so they cannot drift apart.
 
 `page` and `per_page` appear nowhere in this phase. Phase 4's `paginate` owns the limit and the offset.
 
-The analytics phase adds a salary *filter*. It belongs in `filtered`, and the count then pays for the lateral, which is correct: a count that skips a filter disagrees with the page. `joins!` unions its arguments, so `with_salary_as_of` chained onto a `filtered` that already joined on the same date is one join. Two different dates would be two joins and an ambiguous column, so `as_of` is resolved once per request and passed to both.
+The analytics phase adds a salary *filter*. It belongs in `filter`, and the count then pays for the lateral, which is correct: a count that skips a filter disagrees with the page. `joins!` unions its arguments, so `with_salary_as_of` chained onto a `filter` that already joined on the same date is one join. Two different dates would be two joins and an ambiguous column, so `as_of` is resolved once per request and passed to both.
 
 ```sql
 LEFT JOIN LATERAL (
@@ -212,11 +212,11 @@ LEFT JOIN LATERAL (
 
 Build the fragment with `sanitize_sql_array` and bind `as_of`. `bin/ci` runs `brakeman --exit-on-warn`, so one injection warning fails the build. Brakeman accepts the sanitized heredoc but flags an interpolated `Arel.sql`. So each sort key holds two literal `ORDER BY` strings in the frozen hash, one per direction. Nothing is interpolated, and no Arel is needed: Rails takes a raw `order` string that reads as a column or a one-argument function, with a direction and `NULLS LAST`.
 
-Sorting is in the spec: server side search, filter, sort and pagination, because 10,000 rows do not belong in browser memory. The keys are `name`, `hire_date`, `exit_date`, `salary`, `department`, `country` and `level`, with `-` for descending. They live in a frozen hash, and `sorted_by` raises `UnknownSortKey` on anything else. Phase 4 rescues it as a 422. An unknown key is never a silent fallback to the default sort.
+Sorting is in the spec: server side search, filter, sort and pagination, because 10,000 rows do not belong in browser memory. The keys are `name`, `hire_date`, `exit_date`, `salary`, `department`, `country` and `level`, with `-` for descending. They live in a frozen hash, and `sort` raises `UnknownSortKey` on anything else. Phase 4 rescues it as a 422. An unknown key is never a silent fallback to the default sort.
 
 - `name` maps to `lower(employees.name)`.
 - `level` maps to `levels.rank`, never to `code` or `name`. As text `L10` sorts before `L2`, and `rank` is not null in Phase 1 exactly so this sort has something to mean.
-- `department` and `country` map to their `name`. All three reference fks are not null, so `sorted_by` adds these as inner joins and no employee can fall out of the page.
+- `department` and `country` map to their `name`. All three reference fks are not null, so `sort` adds these as inner joins and no employee can fall out of the page.
 - There is no sort by id. A v7 id orders by creation time, which `hire_date` already says better, and an opaque key is not a thing anyone asks a list to sort by.
 - **Every sort ends `, employees.id ASC`**, or offset pagination over duplicate names splits pages nondeterministically and drops rows. v7 makes that tiebreak creation order rather than noise.
 - **`salary` and `exit_date` sort `NULLS LAST` in both directions**: the lateral is a `LEFT JOIN`, so an employee with no live revision as of `as_of` has a null amount, and Postgres puts nulls first on `DESC`, opening "highest paid" on a block of blanks. `exit_date` is null for everyone still employed, which is most of the table.
@@ -246,7 +246,7 @@ One class per operation under `app/services/`, `.call` as the entry point, the t
 
 `Employees::Update` is `employee.update!(attrs)` and nothing else, and `Employees::Create` is barely more. That is accepted. The layer earns its place by being the one answer to where a write lives, and that collapses the moment one resource writes through a service and another writes through the model in a controller. It also gives the deferred work a home that already exists: the importer's all-or-nothing validation, the register issue and freeze, and the adjustment lines are all write orchestration over more than one table, and none of them belong in a model.
 
-**Verify:** `spec/models/` covering the scopes, the status boundaries especially `as_of == exit_date` being active, and an unknown sort key raising. `spec/services/` covering each write, `SalaryRevisions::Create` with no prior revision and with one, and a failed write leaving no rows. Then `EXPLAIN ANALYZE` the lateral against seeded data and confirm there is no Incremental Sort node.
+**Verify:** `spec/models/` covering the scopes and the status boundaries, especially `as_of == exit_date` being active. `spec/queries/` covering the list's filters and sorts, and an unknown sort key raising. `spec/services/` covering each write, `SalaryRevisions::Create` with no prior revision and with one, and a failed write leaving no rows. Then `EXPLAIN ANALYZE` the lateral against seeded data and confirm there is no Incremental Sort node.
 
 ---
 
@@ -276,7 +276,7 @@ GET    /healthz                                              # process + databas
 GET    /readyz                                               # the same, plus no pending migrations
 ```
 
-Every `:id` is a UUID. Controllers stay thin by construction: permit params, call a Phase 5 scope or service, render a serializer. No action opens a transaction or writes SQL.
+Every `:id` is a UUID. Controllers stay thin by construction: permit params, call a Phase 5 scope, query or service, render a serializer. No action opens a transaction or writes SQL.
 
 Collections return `{ data, pagination }`. A collection that does not paginate, which is the closed sets, `/titles` and one employee's salary history, returns `{ data }` alone. Single resources return a bare object. The employee payload carries `status` and the `as_of` that produced it, the three reference objects, and `current_salary` as `{ amount_cents, effective_date }`.
 
