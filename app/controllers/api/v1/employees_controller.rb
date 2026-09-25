@@ -37,8 +37,7 @@ module Api
             raise InvalidParameter.new(name, "must be a single value") unless params[name].nil? || params[name].is_a?(String)
           end
 
-          params.permit(:q, :title, :status, :department_id, :country_id, :level_id,
-                        department_id: [], country_id: [], level_id: [])
+          params.permit(:q, :title, :status).merge(id_filter_params)
         end
 
         def employee_params

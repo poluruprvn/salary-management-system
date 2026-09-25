@@ -163,6 +163,180 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/error"
+  "/api/v1/analytics/distribution":
+    get:
+      summary: Salary percentiles by group
+      tags:
+      - Analytics
+      description: 'Salaried active employees on as_of, filtered, then grouped. q
+        and status are refused: status is always active here.'
+      parameters:
+      - name: group_by
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - department
+          - country
+          - level
+          - title
+          default: department
+      - name: department_id[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: country_id[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: level_id[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: title
+        in: query
+        required: false
+        schema:
+          type: string
+        description: The whole title
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - name
+          - "-name"
+          - headcount
+          - "-headcount"
+          - median
+          - "-median"
+        description: A leading - sorts descending. Defaults to name, or -headcount
+          for title. name is rank for level.
+      - name: as_of
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Defaults to today, and is echoed back
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 25
+        description: Above 100 is clamped to 100, not refused
+      responses:
+        '200':
+          description: a page of groups
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - as_of
+                - group_by
+                - data
+                - unsalaried
+                - pagination
+                properties:
+                  as_of:
+                    type: string
+                    format: date
+                  group_by:
+                    type: string
+                    enum:
+                    - department
+                    - country
+                    - level
+                    - title
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - group
+                      - headcount
+                      - min_cents
+                      - p25_cents
+                      - median_cents
+                      - p75_cents
+                      - max_cents
+                      properties:
+                        group:
+                          type: object
+                          required:
+                          - id
+                          - name
+                          properties:
+                            id:
+                              type: string
+                              description: A uuid, or the title itself for title
+                            name:
+                              type: string
+                        headcount:
+                          type: integer
+                          description: Salaried employees in the group
+                        min_cents:
+                          type: integer
+                          format: int64
+                          description: Minor units of the base currency
+                        p25_cents:
+                          type: integer
+                          format: int64
+                          description: Interpolated, rounded half up to the cent
+                        median_cents:
+                          type: integer
+                          format: int64
+                          description: Interpolated, rounded half up to the cent
+                        p75_cents:
+                          type: integer
+                          format: int64
+                          description: Interpolated, rounded half up to the cent
+                        max_cents:
+                          type: integer
+                          format: int64
+                          description: Minor units of the base currency
+                  unsalaried:
+                    type: integer
+                    description: Active employees the filters matched who have no
+                      salary on file
+                  pagination:
+                    "$ref": "#/components/schemas/pagination"
+        '422':
+          description: a filter, group_by, sort, as_of, page or per_page is invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
   "/api/v1/employees/{employee_id}/audits":
     parameters:
     - name: employee_id

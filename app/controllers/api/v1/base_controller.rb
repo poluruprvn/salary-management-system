@@ -20,6 +20,19 @@ module Api
             end
         end
 
+        # permit drops a hash, or a list holding one, in silence, and the filter would then match everyone.
+        def id_filter_params
+          filters = %i[department_id country_id level_id]
+          filters.each do |name|
+            value = params[name]
+            next if value.nil? || value.is_a?(String) || (value.is_a?(Array) && value.all?(String))
+
+            raise InvalidParameter.new(name, "must be one id or a list of ids")
+          end
+
+          params.permit(*filters, **filters.index_with { [] })
+        end
+
         # Date.iso8601 alone also accepts week dates, datetimes, and years past what Postgres stores.
         def iso_date(raw)
           Date.iso8601(raw) if raw.is_a?(String) && ISO_DATE.match?(raw)

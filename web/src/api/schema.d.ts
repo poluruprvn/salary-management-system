@@ -197,6 +197,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Salary percentiles by group
+         * @description Salaried active employees on as_of, filtered, then grouped. q and status are refused: status is always active here.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    group_by?: "department" | "country" | "level" | "title";
+                    "department_id[]"?: string[];
+                    "country_id[]"?: string[];
+                    "level_id[]"?: string[];
+                    /** @description The whole title */
+                    title?: string;
+                    /** @description A leading - sorts descending. Defaults to name, or -headcount for title. name is rank for level. */
+                    sort?: "name" | "-name" | "headcount" | "-headcount" | "median" | "-median";
+                    /** @description Defaults to today, and is echoed back */
+                    as_of?: string;
+                    page?: number;
+                    /** @description Above 100 is clamped to 100, not refused */
+                    per_page?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description a page of groups */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: date */
+                            as_of: string;
+                            /** @enum {string} */
+                            group_by: "department" | "country" | "level" | "title";
+                            data: {
+                                group: {
+                                    /** @description A uuid, or the title itself for title */
+                                    id: string;
+                                    name: string;
+                                };
+                                /** @description Salaried employees in the group */
+                                headcount: number;
+                                /**
+                                 * Format: int64
+                                 * @description Minor units of the base currency
+                                 */
+                                min_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Interpolated, rounded half up to the cent
+                                 */
+                                p25_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Interpolated, rounded half up to the cent
+                                 */
+                                median_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Interpolated, rounded half up to the cent
+                                 */
+                                p75_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Minor units of the base currency
+                                 */
+                                max_cents: number;
+                            }[];
+                            /** @description Active employees the filters matched who have no salary on file */
+                            unsalaried: number;
+                            pagination: components["schemas"]["pagination"];
+                        };
+                    };
+                };
+                /** @description the access token is missing or invalid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+                /** @description a filter, group_by, sort, as_of, page or per_page is invalid */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employees/{employee_id}/audits": {
         parameters: {
             query?: never;

@@ -275,6 +275,17 @@ RSpec.describe "Employees" do
       expect(body.dig("error", "details")).to eq([ { "field" => "status", "message" => "must be a single value" } ])
     end
 
+    it "is 422 on an id filter sent as a hash, rather than dropping the filter" do
+      create(:employee)
+
+      [ { department_id: { "x" => "1" } }, { level_id: [ { "a" => "b" } ] } ].each do |params|
+        body = list(params)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(body.dig("error", "details")).to eq([ { "field" => params.keys.first.to_s, "message" => "must be one id or a list of ids" } ])
+      end
+    end
+
     it "takes a single id for a filter as well as a list" do
       employee = create(:employee)
       create(:employee)

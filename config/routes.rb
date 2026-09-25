@@ -28,6 +28,7 @@ Rails.application.routes.draw do
 
       namespace :analytics do
         get "run_rate"
+        get "distribution"
       end
     end
   end
