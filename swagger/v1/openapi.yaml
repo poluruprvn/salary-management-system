@@ -337,6 +337,298 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/error"
+  "/api/v1/analytics/cohorts":
+    get:
+      summary: Salary quartiles and outlier fences per level and country
+      tags:
+      - Analytics
+      description: Every level and country pair with a salaried active employee on
+        as_of, by level rank then country name. A cohort under 5 is listed but not
+        evaluated. Not paged.
+      parameters:
+      - name: as_of
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Defaults to today, and is echoed back
+      responses:
+        '200':
+          description: the cohorts
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - as_of
+                - data
+                properties:
+                  as_of:
+                    type: string
+                    format: date
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - level
+                      - country
+                      - headcount
+                      - evaluated
+                      - p25_cents
+                      - p50_cents
+                      - p75_cents
+                      - lower_fence_cents
+                      - upper_fence_cents
+                      - outliers_below
+                      - outliers_above
+                      - reason
+                      properties:
+                        level:
+                          type: object
+                          required:
+                          - id
+                          - name
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        country:
+                          type: object
+                          required:
+                          - id
+                          - name
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        headcount:
+                          type: integer
+                          description: Salaried active employees in the cohort
+                        evaluated:
+                          type: boolean
+                          description: False under 5 people
+                        p25_cents:
+                          type: integer
+                          format: int64
+                          description: Interpolated, rounded half up to the cent
+                        p50_cents:
+                          type: integer
+                          format: int64
+                          description: The median. Interpolated, rounded half up to
+                            the cent
+                        p75_cents:
+                          type: integer
+                          format: int64
+                          description: Interpolated, rounded half up to the cent
+                        lower_fence_cents:
+                          type: integer
+                          format: int64
+                          description: p25 - 1.5 * IQR, rounded. Null when not evaluated.
+                          nullable: true
+                        upper_fence_cents:
+                          type: integer
+                          format: int64
+                          description: p75 + 1.5 * IQR, rounded. Null when not evaluated.
+                          nullable: true
+                        outliers_below:
+                          type: integer
+                          nullable: true
+                          description: Strictly below the unrounded fence. Null when
+                            not evaluated.
+                        outliers_above:
+                          type: integer
+                          nullable: true
+                          description: Strictly above the unrounded fence. Null when
+                            not evaluated.
+                        reason:
+                          type: string
+                          nullable: true
+                          description: Why the cohort is not evaluated
+        '422':
+          description: as_of is invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+  "/api/v1/analytics/outliers":
+    get:
+      summary: Employees outside their cohort's fence
+      tags:
+      - Analytics
+      description: Evaluated cohorts only, farthest from the median first. The filters
+        narrow who is listed. The fence is always computed from the whole level and
+        country. q, status and title are refused.
+      parameters:
+      - name: department_id[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: country_id[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: level_id[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - name: direction
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - below
+          - above
+        description: Both when omitted
+      - name: as_of
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Defaults to today, and is echoed back
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: per_page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 25
+        description: Above 100 is clamped to 100, not refused
+      responses:
+        '200':
+          description: a page of outliers
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - as_of
+                - data
+                - pagination
+                properties:
+                  as_of:
+                    type: string
+                    format: date
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - id
+                      - name
+                      - department
+                      - level
+                      - country
+                      - amount_cents
+                      - cohort_median_cents
+                      - cohort_headcount
+                      - direction
+                      - distance_pct
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        department:
+                          type: object
+                          required:
+                          - id
+                          - name
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        level:
+                          type: object
+                          required:
+                          - id
+                          - name
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        country:
+                          type: object
+                          required:
+                          - id
+                          - name
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        amount_cents:
+                          type: integer
+                          format: int64
+                          description: Annual salary in force on as_of
+                        cohort_median_cents:
+                          type: integer
+                          format: int64
+                          description: Rounded half up to the cent
+                        cohort_headcount:
+                          type: integer
+                        direction:
+                          type: string
+                          enum:
+                          - below
+                          - above
+                        distance_pct:
+                          type: number
+                          description: "(amount - median) / median * 100, one decimal,
+                            negative below"
+                  pagination:
+                    "$ref": "#/components/schemas/pagination"
+        '422':
+          description: a filter, direction, as_of, page or per_page is invalid, or
+            q, status or title is sent
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
   "/api/v1/employees/{employee_id}/audits":
     parameters:
     - name: employee_id

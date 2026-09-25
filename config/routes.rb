@@ -29,6 +29,8 @@ Rails.application.routes.draw do
       namespace :analytics do
         get "run_rate"
         get "distribution"
+        get "cohorts"
+        get "outliers"
       end
     end
   end

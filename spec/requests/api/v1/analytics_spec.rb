@@ -129,6 +129,124 @@ RSpec.describe "Analytics" do
     end
   end
 
+  def seed_cohort_with_an_outlier
+    level, country = create(:level), create(:country)
+    [ 1_000_000, 1_000_000, 1_100_000, 1_200_000, 5_000_000 ].each do |amount|
+      create(:salary_revision, amount_cents: amount, employee: create(:employee, level: level, country: country))
+    end
+  end
+
+  named = { type: :object, required: %w[id name], properties: { id: { type: :string, format: :uuid }, name: { type: :string } } }
+  id_filters = %w[department_id country_id level_id].map do |name|
+    { name: "#{name}[]", in: :query, required: false, getter: :"#{name.delete_suffix("_id")}_ids",
+      schema: { type: :array, items: { type: :string, format: :uuid } } }
+  end
+
+  path "/api/v1/analytics/cohorts" do
+    get "Salary quartiles and outlier fences per level and country" do
+      tags "Analytics"
+      produces "application/json"
+      description "Every level and country pair with a salaried active employee on as_of, by level rank then country name. " \
+                  "A cohort under #{Employee::MIN_COHORT} is listed but not evaluated. Not paged."
+      parameter as_of_parameter
+
+      response "200", "the cohorts" do
+        nullable_cents = cents.merge(nullable: true)
+        schema type: :object, required: %w[as_of data], properties: {
+          as_of: { type: :string, format: :date },
+          data: {
+            type: :array,
+            items: {
+              type: :object,
+              required: %w[level country headcount evaluated p25_cents p50_cents p75_cents lower_fence_cents upper_fence_cents
+                           outliers_below outliers_above reason],
+              properties: {
+                level: named,
+                country: named,
+                headcount: { type: :integer, description: "Salaried active employees in the cohort" },
+                evaluated: { type: :boolean, description: "False under #{Employee::MIN_COHORT} people" },
+                p25_cents: cents.merge(description: "Interpolated, rounded half up to the cent"),
+                p50_cents: cents.merge(description: "The median. Interpolated, rounded half up to the cent"),
+                p75_cents: cents.merge(description: "Interpolated, rounded half up to the cent"),
+                lower_fence_cents: nullable_cents.merge(description: "p25 - 1.5 * IQR, rounded. Null when not evaluated."),
+                upper_fence_cents: nullable_cents.merge(description: "p75 + 1.5 * IQR, rounded. Null when not evaluated."),
+                outliers_below: { type: :integer, nullable: true, description: "Strictly below the unrounded fence. Null when not evaluated." },
+                outliers_above: { type: :integer, nullable: true, description: "Strictly above the unrounded fence. Null when not evaluated." },
+                reason: { type: :string, nullable: true, description: "Why the cohort is not evaluated" }
+              }
+            }
+          }
+        }
+
+        before { seed_cohort_with_an_outlier }
+
+        run_test!
+      end
+
+      response "422", "as_of is invalid" do
+        schema "$ref" => "#/components/schemas/error"
+        let(:as_of) { "June" }
+        run_test!
+      end
+
+      requires_a_token
+    end
+  end
+
+  path "/api/v1/analytics/outliers" do
+    get "Employees outside their cohort's fence" do
+      tags "Analytics"
+      produces "application/json"
+      description "Evaluated cohorts only, farthest from the median first. The filters narrow who is listed. " \
+                  "The fence is always computed from the whole level and country. q, status and title are refused."
+      id_filters.each { |filter| parameter filter }
+      parameter name: :direction, in: :query, required: false, schema: { type: :string, enum: Employee::OUTSIDE_FENCE.keys },
+                description: "Both when omitted"
+      parameter as_of_parameter
+      parameter name: :page, in: :query, required: false, schema: { type: :integer, minimum: 1, default: 1 }
+      parameter name: :per_page, in: :query, required: false, schema: { type: :integer, minimum: 1, default: 25 },
+                description: "Above 100 is clamped to 100, not refused"
+
+      response "200", "a page of outliers" do
+        schema type: :object, required: %w[as_of data pagination], properties: {
+          as_of: { type: :string, format: :date },
+          data: {
+            type: :array,
+            items: {
+              type: :object,
+              required: %w[id name department level country amount_cents cohort_median_cents cohort_headcount direction distance_pct],
+              properties: {
+                id: { type: :string, format: :uuid },
+                name: { type: :string },
+                department: named,
+                level: named,
+                country: named,
+                amount_cents: cents.merge(description: "Annual salary in force on as_of"),
+                cohort_median_cents: cents.merge(description: "Rounded half up to the cent"),
+                cohort_headcount: { type: :integer },
+                direction: { type: :string, enum: Employee::OUTSIDE_FENCE.keys },
+                distance_pct: { type: :number, description: "(amount - median) / median * 100, one decimal, negative below" }
+              }
+            }
+          },
+          pagination: { "$ref" => "#/components/schemas/pagination" }
+        }
+
+        before { seed_cohort_with_an_outlier }
+
+        run_test!
+      end
+
+      response "422", "a filter, direction, as_of, page or per_page is invalid, or q, status or title is sent" do
+        schema "$ref" => "#/components/schemas/error"
+        let(:direction) { "sideways" }
+        run_test!
+      end
+
+      requires_a_token
+    end
+  end
+
   describe "GET /api/v1/analytics/run_rate" do
     let(:as_of) { Date.new(2024, 6, 1) }
     let(:engineering) { create(:department, name: "Engineering") }
@@ -233,6 +351,70 @@ RSpec.describe "Analytics" do
     [ { group_by: "email" }, { sort: "salary" }, { q: "Ada" }, { status: "active" }, { title: [ "Engineer" ] }, { country_id: { "x" => "1" } }, { as_of: "June" } ].each do |params|
       it "refuses #{params.to_json}" do
         body = distribution(**params)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(body["error"]["details"].pluck("field")).to eq([ params.keys.first.to_s ])
+      end
+    end
+  end
+
+  describe "GET /api/v1/analytics/cohorts and /outliers" do
+    let(:as_of) { Date.new(2024, 6, 1) }
+    let(:level) { create(:level, name: "Senior") }
+    let(:country) { create(:country, name: "India") }
+    let(:sales) { create(:department, name: "Sales") }
+
+    def get_analytics(action, **params)
+      get "/api/v1/analytics/#{action}", params: { as_of: as_of.iso8601, **params }, headers: bearer_headers(user)
+      response.parsed_body
+    end
+
+    def hire(salary, department: create(:department), level: self.level, name: nil)
+      employee = create(:employee, department: department, level: level, country: country, hire_date: Date.new(2024, 1, 1),
+                                   name: name || Faker::Name.name)
+      create(:salary_revision, employee: employee, amount_cents: salary)
+      employee
+    end
+
+    it "lists outliers with their cohort and names both kinds of cohort" do
+      [ 1_000_000, 1_000_000, 1_100_000, 1_200_000 ].each { |salary| hire(salary) }
+      far = hire(5_000_000, department: sales, name: "Ada")
+      hire(1_000_000, level: create(:level, name: "Junior"))
+      flat = create(:level, name: "Staff")
+      5.times { hire(1_000_000, level: flat) }
+
+      expect(get_analytics(:outliers)).to include("as_of" => "2024-06-01", "data" => [ {
+        "id" => far.id, "name" => "Ada",
+        "department" => { "id" => sales.id, "name" => "Sales" },
+        "level" => { "id" => level.id, "name" => "Senior" },
+        "country" => { "id" => country.id, "name" => "India" },
+        "amount_cents" => 5_000_000, "cohort_median_cents" => 1_100_000, "cohort_headcount" => 5,
+        "direction" => "above", "distance_pct" => 354.5
+      } ])
+      expect(response.parsed_body["pagination"]).to include("total" => 1)
+
+      cohorts = get_analytics(:cohorts)["data"]
+      expect(cohorts.first).to include("level" => { "id" => level.id, "name" => "Senior" }, "evaluated" => true,
+                                       "outliers_below" => 0, "outliers_above" => 1, "reason" => nil)
+      expect(cohorts.second).to include("evaluated" => false, "lower_fence_cents" => nil, "outliers_above" => nil,
+                                        "reason" => "fewer than 5 people")
+      expect(cohorts.third).to include("evaluated" => false, "upper_fence_cents" => nil, "outliers_above" => nil,
+                                       "reason" => "p25 and p75 are equal")
+    end
+
+    it "filters who is listed, and never the cohort" do
+      [ 1_000_000, 1_000_000, 1_100_000, 1_200_000 ].each { |salary| hire(salary) }
+      far = hire(5_000_000, department: sales)
+
+      expect(get_analytics(:outliers, department_id: [ sales.id ])["data"].pluck("id", "cohort_headcount")).to eq([ [ far.id, 5 ] ])
+      expect(get_analytics(:outliers, department_id: [ create(:department).id ])["data"]).to eq([])
+      expect(get_analytics(:outliers, direction: "below")["data"]).to eq([])
+    end
+
+    [ { direction: "sideways" }, { direction: [ "above" ] }, { level_id: { "x" => "1" } }, { as_of: "June" },
+      { q: "Ada" }, { status: "active" }, { title: "Engineer" } ].each do |params|
+      it "refuses #{params.to_json} on outliers" do
+        body = get_analytics(:outliers, **params)
 
         expect(response).to have_http_status(:unprocessable_content)
         expect(body["error"]["details"].pluck("field")).to eq([ params.keys.first.to_s ])

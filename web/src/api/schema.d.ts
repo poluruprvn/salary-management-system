@@ -310,6 +310,223 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/cohorts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Salary quartiles and outlier fences per level and country
+         * @description Every level and country pair with a salaried active employee on as_of, by level rank then country name. A cohort under 5 is listed but not evaluated. Not paged.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Defaults to today, and is echoed back */
+                    as_of?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the cohorts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: date */
+                            as_of: string;
+                            data: {
+                                level: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    name: string;
+                                };
+                                country: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    name: string;
+                                };
+                                /** @description Salaried active employees in the cohort */
+                                headcount: number;
+                                /** @description False under 5 people */
+                                evaluated: boolean;
+                                /**
+                                 * Format: int64
+                                 * @description Interpolated, rounded half up to the cent
+                                 */
+                                p25_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description The median. Interpolated, rounded half up to the cent
+                                 */
+                                p50_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Interpolated, rounded half up to the cent
+                                 */
+                                p75_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description p25 - 1.5 * IQR, rounded. Null when not evaluated.
+                                 */
+                                lower_fence_cents: number | null;
+                                /**
+                                 * Format: int64
+                                 * @description p75 + 1.5 * IQR, rounded. Null when not evaluated.
+                                 */
+                                upper_fence_cents: number | null;
+                                /** @description Strictly below the unrounded fence. Null when not evaluated. */
+                                outliers_below: number | null;
+                                /** @description Strictly above the unrounded fence. Null when not evaluated. */
+                                outliers_above: number | null;
+                                /** @description Why the cohort is not evaluated */
+                                reason: string | null;
+                            }[];
+                        };
+                    };
+                };
+                /** @description the access token is missing or invalid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+                /** @description as_of is invalid */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/outliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Employees outside their cohort's fence
+         * @description Evaluated cohorts only, farthest from the median first. The filters narrow who is listed. The fence is always computed from the whole level and country. q, status and title are refused.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    "department_id[]"?: string[];
+                    "country_id[]"?: string[];
+                    "level_id[]"?: string[];
+                    /** @description Both when omitted */
+                    direction?: "below" | "above";
+                    /** @description Defaults to today, and is echoed back */
+                    as_of?: string;
+                    page?: number;
+                    /** @description Above 100 is clamped to 100, not refused */
+                    per_page?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description a page of outliers */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: date */
+                            as_of: string;
+                            data: {
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                                department: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    name: string;
+                                };
+                                level: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    name: string;
+                                };
+                                country: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    name: string;
+                                };
+                                /**
+                                 * Format: int64
+                                 * @description Annual salary in force on as_of
+                                 */
+                                amount_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Rounded half up to the cent
+                                 */
+                                cohort_median_cents: number;
+                                cohort_headcount: number;
+                                /** @enum {string} */
+                                direction: "below" | "above";
+                                /** @description (amount - median) / median * 100, one decimal, negative below */
+                                distance_pct: number;
+                            }[];
+                            pagination: components["schemas"]["pagination"];
+                        };
+                    };
+                };
+                /** @description the access token is missing or invalid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+                /** @description a filter, direction, as_of, page or per_page is invalid, or q, status or title is sent */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employees/{employee_id}/audits": {
         parameters: {
             query?: never;
