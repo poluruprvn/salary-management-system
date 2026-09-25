@@ -98,7 +98,9 @@ class Employee < ApplicationRecord
   validate :hire_date_not_after_live_revisions, if: -> { persisted? && hire_date_changed? }
 
   # The exit date is inclusive: the register pays that day.
-  scope :active_as_of, ->(date) { where("hire_date <= :date AND (exit_date IS NULL OR exit_date >= :date)", date: date) }
+  ACTIVE_AS_OF = "employees.hire_date <= :as_of AND (employees.exit_date IS NULL OR employees.exit_date >= :as_of)"
+
+  scope :active_as_of, ->(date) { where(ACTIVE_AS_OF, as_of: date) }
   scope :pending_as_of, ->(date) { where("hire_date > :date", date: date) }
   scope :exited_as_of, ->(date) { where("exit_date < :date", date: date) }
 

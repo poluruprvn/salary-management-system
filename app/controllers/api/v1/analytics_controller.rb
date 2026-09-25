@@ -71,6 +71,15 @@ module Api
         }
       end
 
+      def trend
+        render json: {
+          as_of: as_of,
+          data: Employee.trend(as_of: as_of).map do |row|
+            { date: row.date, **amounts(row), **row.slice(:hires, :exits, :raises, :raise_delta_cents).symbolize_keys }
+          end
+        }
+      end
+
       private
         # Status is always active here, and a free text search makes a population nobody can name.
         # A filter that is ignored instead would return everyone as if it had matched.

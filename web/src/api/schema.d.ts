@@ -527,6 +527,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run rate and movement over twelve months
+         * @description Thirteen points: the last day of each of the twelve months before as_of's month, then as_of. Each point after the first also carries what moved in the interval it closes, after the previous point up to its own date.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Defaults to today, and is echoed back */
+                    as_of?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the thirteen points */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: date */
+                            as_of: string;
+                            data: {
+                                /** Format: date */
+                                date: string;
+                                /** @description Active employees on as_of */
+                                headcount: number;
+                                /** @description Of those, how many have a salary in force. The rest are not in the amounts. */
+                                salaried: number;
+                                /**
+                                 * Format: int64
+                                 * @description Annual salary in force on as_of
+                                 */
+                                gross_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Gross times the country's current multiplier, rounded per employee
+                                 */
+                                loaded_cents: number;
+                                /** @description Hire dates in the interval. Null on the first point. */
+                                hires: number | null;
+                                /** @description Exits whose last paid day falls from the previous point up to the day before this one. Null on the first point. */
+                                exits: number | null;
+                                /** @description Live revisions effective in the interval with a live revision before them. A starting salary is not one. Null on the first point. */
+                                raises: number | null;
+                                /**
+                                 * Format: int64
+                                 * @description Sum of each raise less the salary before it. Null on the first point.
+                                 */
+                                raise_delta_cents: number | null;
+                            }[];
+                        };
+                    };
+                };
+                /** @description the access token is missing or invalid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+                /** @description as_of is invalid */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employees/{employee_id}/audits": {
         parameters: {
             query?: never;

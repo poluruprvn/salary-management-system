@@ -31,6 +31,7 @@ Rails.application.routes.draw do
         get "distribution"
         get "cohorts"
         get "outliers"
+        get "trend"
       end
     end
   end

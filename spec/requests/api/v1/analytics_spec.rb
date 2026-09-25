@@ -247,6 +247,52 @@ RSpec.describe "Analytics" do
     end
   end
 
+  path "/api/v1/analytics/trend" do
+    get "Run rate and movement over twelve months" do
+      tags "Analytics"
+      produces "application/json"
+      description "Thirteen points: the last day of each of the twelve months before as_of's month, then as_of. " \
+                  "Each point after the first also carries what moved in the interval it closes, after the previous point up to its own date."
+      parameter as_of_parameter
+
+      response "200", "the thirteen points" do
+        nullable_count = { type: :integer, nullable: true }
+        schema type: :object, required: %w[as_of data], properties: {
+          as_of: { type: :string, format: :date },
+          data: {
+            type: :array, minItems: 13, maxItems: 13,
+            items: {
+              type: :object,
+              required: %w[date] + amounts.keys.map(&:to_s) + %w[hires exits raises raise_delta_cents],
+              properties: {
+                date: { type: :string, format: :date },
+                **amounts,
+                hires: nullable_count.merge(description: "Hire dates in the interval. Null on the first point."),
+                exits: nullable_count.merge(description: "Exits whose last paid day falls from the previous point up to the day before this one. " \
+                                                        "Null on the first point."),
+                raises: nullable_count.merge(description: "Live revisions effective in the interval with a live revision before them. " \
+                                                          "A starting salary is not one. Null on the first point."),
+                raise_delta_cents: cents.merge(nullable: true, description: "Sum of each raise less the salary before it. Null on the first point.")
+              }
+            }
+          }
+        }
+
+        before { create(:salary_revision) }
+
+        run_test!
+      end
+
+      response "422", "as_of is invalid" do
+        schema "$ref" => "#/components/schemas/error"
+        let(:as_of) { "June" }
+        run_test!
+      end
+
+      requires_a_token
+    end
+  end
+
   describe "GET /api/v1/analytics/run_rate" do
     let(:as_of) { Date.new(2024, 6, 1) }
     let(:engineering) { create(:department, name: "Engineering") }
@@ -419,6 +465,24 @@ RSpec.describe "Analytics" do
         expect(response).to have_http_status(:unprocessable_content)
         expect(body["error"]["details"].pluck("field")).to eq([ params.keys.first.to_s ])
       end
+    end
+  end
+
+  describe "GET /api/v1/analytics/trend" do
+    it "echoes as_of and returns thirteen points ending on it" do
+      employee = create(:employee, hire_date: Date.new(2024, 5, 1))
+      create(:salary_revision, employee: employee, effective_date: Date.new(2024, 5, 1), amount_cents: 10_000_000)
+
+      get "/api/v1/analytics/trend", params: { as_of: "2024-06-15" }, headers: bearer_headers(user)
+      body = response.parsed_body
+
+      expect(body["as_of"]).to eq("2024-06-15")
+      expect(body["data"].pluck("date")).to eq(Employee.trend_dates(Date.new(2024, 6, 15)).map(&:iso8601))
+      expect(body["data"].first).to include("headcount" => 0, "hires" => nil, "raise_delta_cents" => nil)
+      expect(body["data"][-2]).to eq(
+        "date" => "2024-05-31", "headcount" => 1, "salaried" => 1, "gross_cents" => 10_000_000, "loaded_cents" => 12_000_000,
+        "hires" => 1, "exits" => 0, "raises" => 0, "raise_delta_cents" => 0
+      )
     end
   end
 end

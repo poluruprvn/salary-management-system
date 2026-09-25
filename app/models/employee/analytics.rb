@@ -26,6 +26,13 @@ module Employee::Analytics
 
   DISTANCE = "(salaried.amount_cents - cohort_stats.p50) / cohort_stats.p50 * 100"
 
+  RUN_RATE_AMOUNTS = [
+    "COUNT(*) AS headcount",
+    "COUNT(current_salary.amount_cents) AS salaried",
+    "COALESCE(SUM(current_salary.amount_cents), 0)::bigint AS gross_cents",
+    "COALESCE(SUM(ROUND(current_salary.amount_cents * countries.employer_cost_multiplier)), 0)::bigint AS loaded_cents"
+  ].freeze
+
   class_methods do
     def group_column(key)
       closed_group(GROUP_KEYS, key)
@@ -42,10 +49,7 @@ module Employee::Analytics
         .group("GROUPING SETS ((#{column}), ())")
         .select("#{column} AS group_id",
                 "GROUPING(#{column}) = 1 AS is_total",
-                "COUNT(*) AS headcount",
-                "COUNT(current_salary.amount_cents) AS salaried",
-                "COALESCE(SUM(current_salary.amount_cents), 0)::bigint AS gross_cents",
-                "COALESCE(SUM(ROUND(current_salary.amount_cents * countries.employer_cost_multiplier)), 0)::bigint AS loaded_cents")
+                *RUN_RATE_AMOUNTS)
         .order("is_total", "loaded_cents DESC", "group_id")
     end
 
@@ -155,7 +159,59 @@ module Employee::Analytics
       with(salaried: salaried, cohort_stats: cohort_stats)
     end
 
+    # The last day of each of the twelve months before as_of's month, then as_of itself.
+    def trend_dates(as_of)
+      [ *12.downto(1).map { |months| (as_of << months).end_of_month }, as_of ]
+    end
+
+    # The run rate at each date, and what moved in the interval that date closes. The first date
+    # closes no interval, so its movement is null. The exit date is paid, so an exit counts where
+    # headcount drops: in the interval holding the day after it. A raise is a live revision with a live one before
+    # it, so a starting salary is not one.
+    def trend(as_of:)
+      dates = trend_dates(as_of)
+      points = unscoped
+        .from(sanitize_sql_array([ "unnest(ARRAY[:dates]::date[], ARRAY[:previous]::date[]) AS points(date, previous_date)",
+                                   { dates: dates, previous: [ nil, *dates[...-1] ] } ]))
+        .select("points.*")
+      run_rate = unscoped.where(at_point(Employee::ACTIVE_AS_OF))
+        .joins(:country)
+        .joins(at_point(Employee::SALARY_AS_OF_JOIN))
+        .select(*RUN_RATE_AMOUNTS)
+      # Joined to the window's output, not filtered inside it, or LAG loses the previous revision.
+      # A plain join rather than a lateral, so the window runs once and not once per point.
+      revisions = SalaryRevision.live.select("salary_revisions.effective_date", "salary_revisions.amount_cents", SalaryRevision::PREVIOUS_AMOUNT)
+      raises = unscoped.from("points")
+        .joins(<<~SQL.squish)
+          LEFT JOIN (#{revisions.to_sql}) revisions ON revisions.previous_amount_cents IS NOT NULL
+            AND revisions.effective_date > points.previous_date AND revisions.effective_date <= points.date
+        SQL
+        .group("points.date")
+        .select("points.date", "COUNT(revisions.amount_cents) AS raises",
+                "COALESCE(SUM(revisions.amount_cents - revisions.previous_amount_cents), 0)::bigint AS raise_delta_cents")
+
+      unscoped.with(points: points, raises: raises)
+        .from("points")
+        .joins("CROSS JOIN LATERAL (#{run_rate.to_sql}) run_rate")
+        .joins(<<~SQL.squish)
+          LEFT JOIN LATERAL (
+            SELECT (SELECT COUNT(*) FROM employees WHERE employees.hire_date > points.previous_date AND employees.hire_date <= points.date) AS hires,
+                   (SELECT COUNT(*) FROM employees WHERE employees.exit_date >= points.previous_date AND employees.exit_date < points.date) AS exits,
+                   raises.raises, raises.raise_delta_cents
+            FROM raises
+            WHERE raises.date = points.date
+          ) movement ON points.previous_date IS NOT NULL
+        SQL
+        .select("points.date", "run_rate.*", "movement.*")
+        .order("points.date")
+    end
+
     private
+      # The same active window and salary lateral, read at each trend point instead of one bound date.
+      def at_point(sql)
+        sql.gsub(":as_of", "points.date")
+      end
+
       def closed_group(keys, key)
         keys.fetch(key.to_s) { raise InvalidParameter.new(:group_by, "must be one of #{keys.keys.join(", ")}") }
       end

@@ -629,6 +629,107 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/error"
+  "/api/v1/analytics/trend":
+    get:
+      summary: Run rate and movement over twelve months
+      tags:
+      - Analytics
+      description: 'Thirteen points: the last day of each of the twelve months before
+        as_of''s month, then as_of. Each point after the first also carries what moved
+        in the interval it closes, after the previous point up to its own date.'
+      parameters:
+      - name: as_of
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Defaults to today, and is echoed back
+      responses:
+        '200':
+          description: the thirteen points
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - as_of
+                - data
+                properties:
+                  as_of:
+                    type: string
+                    format: date
+                  data:
+                    type: array
+                    minItems: 13
+                    maxItems: 13
+                    items:
+                      type: object
+                      required:
+                      - date
+                      - headcount
+                      - salaried
+                      - gross_cents
+                      - loaded_cents
+                      - hires
+                      - exits
+                      - raises
+                      - raise_delta_cents
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        headcount:
+                          type: integer
+                          description: Active employees on as_of
+                        salaried:
+                          type: integer
+                          description: Of those, how many have a salary in force.
+                            The rest are not in the amounts.
+                        gross_cents:
+                          type: integer
+                          format: int64
+                          description: Annual salary in force on as_of
+                        loaded_cents:
+                          type: integer
+                          format: int64
+                          description: Gross times the country's current multiplier,
+                            rounded per employee
+                        hires:
+                          type: integer
+                          nullable: true
+                          description: Hire dates in the interval. Null on the first
+                            point.
+                        exits:
+                          type: integer
+                          nullable: true
+                          description: Exits whose last paid day falls from the previous
+                            point up to the day before this one. Null on the first
+                            point.
+                        raises:
+                          type: integer
+                          nullable: true
+                          description: Live revisions effective in the interval with
+                            a live revision before them. A starting salary is not
+                            one. Null on the first point.
+                        raise_delta_cents:
+                          type: integer
+                          format: int64
+                          description: Sum of each raise less the salary before it.
+                            Null on the first point.
+                          nullable: true
+        '422':
+          description: as_of is invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
   "/api/v1/employees/{employee_id}/audits":
     parameters:
     - name: employee_id
