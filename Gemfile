@@ -11,6 +11,7 @@ gem "rack-cors"
 gem "audited"
 gem "bcrypt", "~> 3.1.7"
 gem "jwt"
+gem "lograge"
 
 gem "bootsnap", require: false
 gem "tzinfo-data", platforms: %i[ windows jruby ]

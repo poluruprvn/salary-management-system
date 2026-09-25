@@ -27,9 +27,8 @@ Rails.application.configure do
   # Skip http-to-https redirect for the health check endpoints.
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path.in?(%w[/healthz /readyz]) } } }
 
-  # Log to STDOUT with the current request id as a default log tag.
-  config.log_tags = [ :request_id ]
-  config.logger   = ActiveSupport::TaggedLogging.logger(STDOUT)
+  # No request id tag: lograge puts it in the JSON line, and a tag prefix would break the JSON.
+  config.logger = ActiveSupport::TaggedLogging.logger(STDOUT)
 
   # Change to "debug" to log everything (including potentially personally-identifiable information!).
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
