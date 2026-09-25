@@ -2,6 +2,8 @@
 
 Salary management system. A Rails 8.1 API-only backend, with a React 19 + Vite single-page app in [`web/`](web). The two are separate applications. They talk over HTTP and deploy independently.
 
+Live demo: https://sms.garib.dev. Sign in as `hr@example.com` with password `password`.
+
 ## Requirements
 
 - Ruby 3.4.10 (see `.ruby-version`)
