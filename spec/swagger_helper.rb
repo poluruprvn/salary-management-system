@@ -93,8 +93,16 @@ RSpec.configure do |config|
           },
           country: {
             type: :object,
-            required: %w[id code name],
-            properties: { id: uuid, code: { type: :string, example: "IN" }, name: { type: :string } }
+            required: %w[id code name employer_cost_multiplier],
+            properties: {
+              id: uuid,
+              code: { type: :string, example: "IN" },
+              name: { type: :string },
+              employer_cost_multiplier: {
+                type: :string, example: "1.45",
+                description: "A decimal string, so the client never holds it as a float. Gross times this is fully loaded."
+              }
+            }
           },
           department: {
             type: :object,

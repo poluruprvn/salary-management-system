@@ -336,6 +336,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/countries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a country's employer cost multiplier
+         * @description Only the multiplier is editable. Every fully loaded figure uses the current value, past dates included.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * @description Above 0, below 100, at most 4 decimal places
+                         * @example 1.45
+                         */
+                        employer_cost_multiplier?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["country"];
+                    };
+                };
+                /** @description the access token is missing or invalid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+                /** @description no country has that id */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+                /** @description the multiplier is invalid */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/api/v1/employees": {
         parameters: {
             query?: never;
@@ -1252,6 +1332,11 @@ export interface components {
             /** @example IN */
             code: string;
             name: string;
+            /**
+             * @description A decimal string, so the client never holds it as a float. Gross times this is fully loaded.
+             * @example 1.45
+             */
+            employer_cost_multiplier: string;
         };
         department: {
             /** Format: uuid */

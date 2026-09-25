@@ -21,7 +21,7 @@ Rails.application.routes.draw do
         resources :audits, only: :index
       end
 
-      resources :countries, only: :index
+      resources :countries, only: [ :index, :update ]
       resources :departments, only: :index
       resources :levels, only: :index
       resources :titles, only: :index

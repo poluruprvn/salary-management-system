@@ -199,6 +199,57 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/error"
+  "/api/v1/countries/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+        format: uuid
+      required: true
+    patch:
+      summary: Update a country's employer cost multiplier
+      tags:
+      - Reference data
+      description: Only the multiplier is editable. Every fully loaded figure uses
+        the current value, past dates included.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/country"
+        '404':
+          description: no country has that id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '422':
+          description: the multiplier is invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                employer_cost_multiplier:
+                  type: string
+                  example: '1.45'
+                  description: Above 0, below 100, at most 4 decimal places
+        required: true
   "/api/v1/employees":
     get:
       summary: List employees
@@ -1049,6 +1100,7 @@ components:
       - id
       - code
       - name
+      - employer_cost_multiplier
       properties:
         id:
           type: string
@@ -1058,6 +1110,11 @@ components:
           example: IN
         name:
           type: string
+        employer_cost_multiplier:
+          type: string
+          example: '1.45'
+          description: A decimal string, so the client never holds it as a float.
+            Gross times this is fully loaded.
     department:
       type: object
       required:

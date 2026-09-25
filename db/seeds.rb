@@ -62,8 +62,11 @@ begin
     User.create_with(name: "HR Manager", password: ENV.fetch("SEED_HR_PASSWORD", "password"))
       .find_or_create_by!(email: ENV.fetch("SEED_HR_EMAIL", "hr@example.com"))
 
-    countries.each do |country|
-      country[:id] = Country.create_with(country.slice(:name, :employer_cost_multiplier)).find_or_create_by!(code: country[:code]).id
+    # Seeded rows have no actor, and the employees skip auditing through insert_all.
+    Country.without_auditing do
+      countries.each do |country|
+        country[:id] = Country.create_with(country.slice(:name, :employer_cost_multiplier)).find_or_create_by!(code: country[:code]).id
+      end
     end
     departments.each { |department| department[:id] = Department.find_or_create_by!(name: department[:name]).id }
     levels.each { |level| level[:id] = Level.create_with(level.slice(:name, :rank)).find_or_create_by!(code: level[:code]).id }

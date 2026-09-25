@@ -19,6 +19,8 @@
 #  countries_employer_cost_multiplier_positive  (employer_cost_multiplier > 0::numeric)
 #
 class Country < ApplicationRecord
+  audited
+
   has_many :employees, dependent: :restrict_with_error
 
   normalizes :name, with: ->(name) { name.squish }
@@ -29,4 +31,14 @@ class Country < ApplicationRecord
   validates :code, presence: true, uniqueness: true, format: { with: /\A[A-Z]{2}\z/ }
   validates :name, presence: true
   validates :employer_cost_multiplier, presence: true, numericality: { greater_than: 0, less_than: 100 }
+  validate :employer_cost_multiplier_fits_scale
+
+  private
+    # The decimal type rounds to the column's scale on cast, so a fifth place would save as a silent round.
+    def employer_cost_multiplier_fits_scale
+      value = BigDecimal(employer_cost_multiplier_before_type_cast.to_s, exception: false)
+      return if value.nil? || value.round(4) == value
+
+      errors.add(:employer_cost_multiplier, "must have at most 4 decimal places")
+    end
 end

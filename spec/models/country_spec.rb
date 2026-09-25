@@ -45,6 +45,11 @@ RSpec.describe Country do
     expect(build(:country, employer_cost_multiplier: 100)).not_to be_valid
   end
 
+  it "rejects a multiplier with a fifth decimal place rather than rounding it" do
+    expect(build(:country, employer_cost_multiplier: "1.4567")).to be_valid
+    expect(build(:country, employer_cost_multiplier: "1.45678")).not_to be_valid
+  end
+
   it "holds the multiplier in a check constraint when the validation is skipped" do
     country = build(:country, employer_cost_multiplier: 0)
 

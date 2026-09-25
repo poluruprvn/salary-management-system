@@ -29,8 +29,8 @@ export const tokens = (suffix: string): TokenPair => ({
 })
 
 export const countries: Country[] = [
-  { id: 'country-in', code: 'IN', name: 'India' },
-  { id: 'country-us', code: 'US', name: 'United States' },
+  { id: 'country-in', code: 'IN', name: 'India', employer_cost_multiplier: '1.15' },
+  { id: 'country-us', code: 'US', name: 'United States', employer_cost_multiplier: '1.3' },
 ]
 
 export const departments: Department[] = [

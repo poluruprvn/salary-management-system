@@ -235,7 +235,8 @@ RSpec.describe "Employees" do
       employee = create(:employee)
 
       expect(list["data"].sole).to include(
-        "country" => { "id" => employee.country.id, "code" => employee.country.code, "name" => employee.country.name },
+        "country" => { "id" => employee.country.id, "code" => employee.country.code, "name" => employee.country.name,
+                       "employer_cost_multiplier" => "1.2" },
         "department" => { "id" => employee.department.id, "name" => employee.department.name },
         "level" => { "id" => employee.level.id, "code" => employee.level.code, "name" => employee.level.name,
                      "rank" => employee.level.rank }
