@@ -174,7 +174,7 @@ module Employee::Analytics
         .from(sanitize_sql_array([ "unnest(ARRAY[:dates]::date[], ARRAY[:previous]::date[]) AS points(date, previous_date)",
                                    { dates: dates, previous: [ nil, *dates[...-1] ] } ]))
         .select("points.*")
-      run_rate = unscoped.where(at_point(Employee::ACTIVE_AS_OF))
+      run_rate = unscoped.where("employees.hire_date <= points.date AND (employees.exit_date IS NULL OR employees.exit_date >= points.date)")
         .joins(:country)
         .joins(at_point(Employee::SALARY_AS_OF_JOIN))
         .select(*RUN_RATE_AMOUNTS)
@@ -207,7 +207,7 @@ module Employee::Analytics
     end
 
     private
-      # The same active window and salary lateral, read at each trend point instead of one bound date.
+      # The salary lateral, read at each trend point instead of one bound date.
       def at_point(sql)
         sql.gsub(":as_of", "points.date")
       end
