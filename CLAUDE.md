@@ -25,7 +25,7 @@ Frontend (`web/`):
 
 Gems install to `vendor/bundle`, set by the committed `.bundle/config`. Use `bundle exec` or the `bin/` binstubs. Building the `pg` gem needs `libpq-dev` and `build-essential` on the host, or the distro equivalent.
 
-`db/seeds.rb` creates the HR account in development and test: `hr@example.com` / `password`, unless `SEED_HR_EMAIL` and `SEED_HR_PASSWORD` say otherwise. A re-run adds only missing employees and never writes to an existing one.
+`db/seeds.rb` runs in every environment, production included. It creates the HR account `hr@example.com` / `password`, unless `SEED_HR_EMAIL` and `SEED_HR_PASSWORD` say otherwise. A re-run adds only missing employees and never writes to an existing one.
 
 ## Testing
 

@@ -1,8 +1,3 @@
-# Production does not load Faker, and invented employees do not belong there. The container's
-# db:prepare seeds an empty database, so this returns rather than aborts: abort raises SystemExit,
-# which fails db:prepare and stops the first boot.
-return unless Rails.env.local?
-
 # weight is a share of headcount. pay scales a level's US base salary. The multiplier is a rough
 # figure for statutory employer contributions on top of gross.
 countries = [

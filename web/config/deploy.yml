@@ -1,0 +1,23 @@
+service: sms-web
+image: sms-web
+
+servers:
+  web:
+    - <%= ENV.fetch("KAMAL_SERVER_IP") %>
+
+# The API (../config/deploy.yml) claims /api on the same host.
+proxy:
+  ssl: true
+  host: <%= ENV.fetch("KAMAL_HOST") %>
+  app_port: 80
+  healthcheck:
+    path: /
+
+# Kamal runs this registry locally and pushes to the server over SSH, so no account is needed.
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  args:
+    VITE_API_URL: https://<%= ENV.fetch("KAMAL_HOST") %>

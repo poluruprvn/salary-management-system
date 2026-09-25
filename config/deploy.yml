@@ -1,0 +1,55 @@
+service: sms
+image: sms
+
+servers:
+  web:
+    - <%= ENV.fetch("KAMAL_SERVER_IP") %>
+
+# The SPA (web/config/deploy.yml) serves the same host. kamal-proxy sends /api here and the rest there.
+proxy:
+  ssl: true
+  host: <%= ENV.fetch("KAMAL_HOST") %>
+  path_prefix: /api
+  strip_path_prefix: false
+  app_port: 3000
+  healthcheck:
+    path: /healthz
+
+# The first boot seeds 10,000 employees before the server answers.
+deploy_timeout: 60
+
+# Kamal runs this registry locally and pushes to the server over SSH, so no account is needed.
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+
+env:
+  clear:
+    DATABASE_HOST: sms-db
+    DATABASE_PORT: 5432
+    DATABASE_USER: sms
+  secret:
+    - RAILS_MASTER_KEY
+    - DATABASE_PASSWORD
+    - SEED_HR_EMAIL
+    - SEED_HR_PASSWORD
+
+aliases:
+  console: app exec --interactive --reuse "bin/rails console"
+  logs: app logs -f
+  dbc: app exec --interactive --reuse "bin/rails dbconsole"
+
+accessories:
+  db:
+    image: postgres:18-alpine
+    host: <%= ENV.fetch("KAMAL_SERVER_IP") %>
+    env:
+      clear:
+        POSTGRES_USER: sms
+        POSTGRES_DB: sms_production
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      - data:/var/lib/postgresql

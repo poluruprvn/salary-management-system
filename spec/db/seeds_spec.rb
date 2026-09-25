@@ -19,14 +19,6 @@ RSpec.describe "db/seeds.rb" do
     allow(ENV).to receive(:fetch).with("SEED_EMPLOYEE_COUNT", anything).and_return("50")
   end
 
-  it "writes nothing outside development and test" do
-    allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new("production"))
-
-    # exit or abort would end the run without a failure. raise_error catches SystemExit.
-    expect { seed }.not_to raise_error
-    expect(row_counts.values).to all(be_zero)
-  end
-
   it "writes the same rows when run twice" do
     seed
 

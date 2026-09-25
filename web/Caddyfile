@@ -1,0 +1,17 @@
+# kamal-proxy ends TLS in front of this, so Caddy serves plain HTTP.
+:80 {
+	root * /srv
+	encode zstd gzip
+
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	@shell not path /assets/*
+	header @shell Cache-Control "no-cache"
+
+	# A missing asset must 404. Serving index.html there would cache HTML as JS for a year.
+	@spa {
+		not path /assets/*
+		not file
+	}
+	rewrite @spa /index.html
+	file_server
+}

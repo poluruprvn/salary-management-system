@@ -19,7 +19,7 @@ bin/setup --skip-server              # bundle install + db:prepare
 
 `bin/setup` without `--skip-server` runs the setup steps and then execs the server, so it never returns. Use `--reset` to drop and recreate the database.
 
-`db:prepare` seeds an empty database: one HR account, `hr@example.com` with password `password`, and 10,000 employees with salary histories. `bin/rails db:seed` adds only the employees that are missing and never writes to an existing one. A change to the seed or a Faker upgrade can rename employees, and a re-run adds them as new people, so run `bin/setup --reset` after one. The seed does nothing outside development and test.
+`db:prepare` seeds an empty database: one HR account, `hr@example.com` with password `password`, and 10,000 employees with salary histories. `bin/rails db:seed` adds only the employees that are missing and never writes to an existing one. A change to the seed or a Faker upgrade can rename employees, and a re-run adds them as new people, so run `bin/setup --reset` after one. Production runs the same seed, with the HR login taken from `SEED_HR_EMAIL` and `SEED_HR_PASSWORD`.
 
 Gems install into `vendor/bundle`. Run Ruby tools through `bundle exec` or the `bin/` binstubs.
 
