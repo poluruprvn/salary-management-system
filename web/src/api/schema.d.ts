@@ -94,6 +94,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/run_rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Annual run rate by group
+         * @description Active employees on as_of, grouped. A group with nobody active is left out. Rows are costliest first on loaded.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    group_by?: "department" | "country" | "level";
+                    /** @description Defaults to today, and is echoed back */
+                    as_of?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description the run rate */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: date */
+                            as_of: string;
+                            /** @enum {string} */
+                            group_by: "department" | "country" | "level";
+                            data: {
+                                group: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    name: string;
+                                };
+                                /** @description Active employees on as_of */
+                                headcount: number;
+                                /** @description Of those, how many have a salary in force. The rest are not in the amounts. */
+                                salaried: number;
+                                /**
+                                 * Format: int64
+                                 * @description Annual salary in force on as_of
+                                 */
+                                gross_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Gross times the country's current multiplier, rounded per employee
+                                 */
+                                loaded_cents: number;
+                            }[];
+                            totals: {
+                                /** @description Active employees on as_of */
+                                headcount: number;
+                                /** @description Of those, how many have a salary in force. The rest are not in the amounts. */
+                                salaried: number;
+                                /**
+                                 * Format: int64
+                                 * @description Annual salary in force on as_of
+                                 */
+                                gross_cents: number;
+                                /**
+                                 * Format: int64
+                                 * @description Gross times the country's current multiplier, rounded per employee
+                                 */
+                                loaded_cents: number;
+                            };
+                        };
+                    };
+                };
+                /** @description the access token is missing or invalid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+                /** @description group_by or as_of is invalid */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/employees/{employee_id}/audits": {
         parameters: {
             query?: never;

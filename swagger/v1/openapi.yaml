@@ -42,6 +42,127 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/error"
+  "/api/v1/analytics/run_rate":
+    get:
+      summary: Annual run rate by group
+      tags:
+      - Analytics
+      description: Active employees on as_of, grouped. A group with nobody active
+        is left out. Rows are costliest first on loaded.
+      parameters:
+      - name: group_by
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - department
+          - country
+          - level
+          default: department
+      - name: as_of
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Defaults to today, and is echoed back
+      responses:
+        '200':
+          description: the run rate
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - as_of
+                - group_by
+                - data
+                - totals
+                properties:
+                  as_of:
+                    type: string
+                    format: date
+                  group_by:
+                    type: string
+                    enum:
+                    - department
+                    - country
+                    - level
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - group
+                      - headcount
+                      - salaried
+                      - gross_cents
+                      - loaded_cents
+                      properties:
+                        group:
+                          type: object
+                          required:
+                          - id
+                          - name
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            name:
+                              type: string
+                        headcount:
+                          type: integer
+                          description: Active employees on as_of
+                        salaried:
+                          type: integer
+                          description: Of those, how many have a salary in force.
+                            The rest are not in the amounts.
+                        gross_cents:
+                          type: integer
+                          format: int64
+                          description: Annual salary in force on as_of
+                        loaded_cents:
+                          type: integer
+                          format: int64
+                          description: Gross times the country's current multiplier,
+                            rounded per employee
+                  totals:
+                    type: object
+                    required:
+                    - headcount
+                    - salaried
+                    - gross_cents
+                    - loaded_cents
+                    properties:
+                      headcount:
+                        type: integer
+                        description: Active employees on as_of
+                      salaried:
+                        type: integer
+                        description: Of those, how many have a salary in force. The
+                          rest are not in the amounts.
+                      gross_cents:
+                        type: integer
+                        format: int64
+                        description: Annual salary in force on as_of
+                      loaded_cents:
+                        type: integer
+                        format: int64
+                        description: Gross times the country's current multiplier,
+                          rounded per employee
+        '422':
+          description: group_by or as_of is invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '401':
+          description: the access token is missing or invalid
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
   "/api/v1/employees/{employee_id}/audits":
     parameters:
     - name: employee_id

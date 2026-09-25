@@ -25,6 +25,10 @@ Rails.application.routes.draw do
       resources :departments, only: :index
       resources :levels, only: :index
       resources :titles, only: :index
+
+      namespace :analytics do
+        get "run_rate"
+      end
     end
   end
 

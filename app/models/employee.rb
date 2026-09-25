@@ -69,6 +69,8 @@ class Employee < ApplicationRecord
     ) current_salary ON TRUE
   SQL
 
+  include Analytics
+
   audited
   has_associated_audits
 
