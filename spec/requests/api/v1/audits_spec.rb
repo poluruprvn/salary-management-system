@@ -37,6 +37,12 @@ RSpec.describe "Audits" do
         run_test!
       end
 
+      response "422", "page or per_page is not a positive integer" do
+        schema "$ref" => "#/components/schemas/error"
+        let(:page) { 0 }
+        run_test!
+      end
+
       requires_a_token
     end
   end

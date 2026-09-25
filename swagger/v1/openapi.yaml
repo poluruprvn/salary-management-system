@@ -95,6 +95,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/error"
+        '422':
+          description: page or per_page is not a positive integer
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
         '401':
           description: the access token is missing or invalid
           content:
@@ -419,6 +425,12 @@ paths:
                 "$ref": "#/components/schemas/employee"
         '404':
           description: no employee has that id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/error"
+        '422':
+          description: as_of is not a date
           content:
             application/json:
               schema:

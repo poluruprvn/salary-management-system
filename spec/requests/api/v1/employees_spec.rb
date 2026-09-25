@@ -125,6 +125,12 @@ RSpec.describe "Employees" do
         run_test!
       end
 
+      response "422", "as_of is not a date" do
+        schema "$ref" => "#/components/schemas/error"
+        let(:as_of) { "yesterday" }
+        run_test!
+      end
+
       requires_a_token
     end
 
@@ -330,6 +336,19 @@ RSpec.describe "Employees" do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body.dig("error", "details")).to eq([ { "field" => "email", "message" => "has already been taken" } ])
+    end
+
+    # Two concurrent requests can both pass the validation. Only the index sees the second.
+    it "is 422 with no details when the index catches a duplicate email the validation missed" do
+      create(:employee, email: "ada@example.com")
+      allow_any_instance_of(ActiveRecord::Validations::UniquenessValidator).to receive(:validate_each)
+
+      post "/api/v1/employees", params: attributes, headers: bearer_headers(user), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body["error"]).to eq(
+        "code" => "validation_failed", "message" => "A record with these values already exists", "details" => []
+      )
     end
 
     it "is 422 and writes nothing for a date sent as a number" do

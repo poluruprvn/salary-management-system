@@ -187,6 +187,19 @@ RSpec.describe "Salary revisions" do
       expect(body.dig("error", "details")).to eq([ { "field" => "effective_date", "message" => "has already been taken" } ])
     end
 
+    # Two concurrent requests can both pass the validation. Only the partial index sees the second.
+    it "is 422 with no details when the index catches an occupied date the validation missed" do
+      revise(Date.new(2024, 1, 1), 12_000_000)
+      allow_any_instance_of(ActiveRecord::Validations::UniquenessValidator).to receive(:validate_each)
+
+      body = add(amount_cents: 13_200_000, effective_date: "2024-01-01", reason: "merit")
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(body["error"]).to eq(
+        "code" => "validation_failed", "message" => "A record with these values already exists", "details" => []
+      )
+    end
+
     it "is 422 on a date before the hire date" do
       body = add(amount_cents: 12_000_000, effective_date: "2023-12-31", reason: "merit")
 
